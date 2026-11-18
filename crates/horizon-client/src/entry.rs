@@ -6,6 +6,26 @@ use horizon_mod_package::selection::{Argument, LaunchArguments};
 pub(crate) mod dedicated_arguments;
 pub(crate) mod runtime_environment;
 
+static EVENT_LOOP_HOOK: std::sync::OnceLock<fn(&mut winit::event_loop::EventLoopBuilder<()>)> =
+    std::sync::OnceLock::new();
+
+/// Lets a platform shape winit's event loop before the game builds it. Android hands its
+/// `AndroidApp` over here (winit cannot build a loop there without it); desktop never sets it.
+/// Call it once, before [`prepare`]; later calls are ignored.
+pub fn set_event_loop_hook(hook: fn(&mut winit::event_loop::EventLoopBuilder<()>)) {
+    let _ = EVENT_LOOP_HOOK.set(hook);
+}
+
+/// The window loop for the game's own windows: winit's default, shaped by [`set_event_loop_hook`].
+pub(crate) fn new_event_loop() -> Result<winit::event_loop::EventLoop<()>, winit::error::EventLoopError>
+{
+    let mut builder = winit::event_loop::EventLoop::builder();
+    if let Some(hook) = EVENT_LOOP_HOOK.get() {
+        hook(&mut builder);
+    }
+    builder.build()
+}
+
 /// Validated startup state. No native hooks or workers may run before prepare returns.
 pub struct Startup {
     launch: LaunchArguments,
