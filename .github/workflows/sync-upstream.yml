@@ -1,0 +1,75 @@
+name: Sync with upstream
+
+# Rebases the `android` branch onto horizon-rust/horizon's main every day and force-pushes it.
+# `main` of this fork follows upstream exactly. On a conflict nothing is pushed and an issue
+# is opened (or commented on) with what to do.
+#
+# Upstream often changes .github/workflows, and the default GITHUB_TOKEN may not push those
+# changes. If the push is refused for that reason, add a personal access token with the
+# `repo` and `workflow` scopes as the repository secret SYNC_TOKEN.
+
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: android
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Fetch upstream
+        run: |
+          git config user.name "sync-upstream"
+          git config user.email "sync-upstream@users.noreply.github.com"
+          git remote add upstream https://github.com/horizon-rust/horizon.git
+          git fetch upstream main
+
+      - name: Rebase android onto upstream main
+        id: rebase
+        run: |
+          behind=$(git rev-list --count HEAD..upstream/main)
+          echo "behind=$behind" >> "$GITHUB_OUTPUT"
+          if [ "$behind" = "0" ]; then
+            echo "Already up to date."
+            exit 0
+          fi
+          if git rebase upstream/main; then
+            echo "result=ok" >> "$GITHUB_OUTPUT"
+          else
+            git rebase --abort || true
+            echo "result=conflict" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push android and main
+        if: steps.rebase.outputs.result == 'ok'
+        run: |
+          git push --force-with-lease origin android
+          git push --force origin upstream/main:refs/heads/main
+
+      - name: Report a conflict
+        if: steps.rebase.outputs.result == 'conflict'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Upstream sync needs a manual rebase"
+          body="Rebasing android onto upstream main conflicted. Locally: run tools/sync-upstream.sh, fix the conflicts, git rebase --continue, then git push --force-with-lease origin android. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
