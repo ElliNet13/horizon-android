@@ -4,6 +4,7 @@
 //! move vector and the right stick turning the view. `horizon-ctl pad`
 //! injects a virtual pad on top of the real one.
 use super::event_loop::EventLoopCtl;
+use super::touch_input;
 use super::{Game, Screen};
 use horizon_client::actions::Action;
 use horizon_client::held::Source;
@@ -370,7 +371,7 @@ impl Game<'_> {
             focused: self.focused,
             osk: self.pad_keyboard_captures(),
             dialog: self.dialog_open() || self.code_of_conduct.is_some(),
-            enabled: self.settings.controller.enabled,
+            enabled: self.settings.controller.enabled || touch_input::touch_enabled(),
         }
     }
 
@@ -385,7 +386,7 @@ impl Game<'_> {
             self.pad_cancel_inputs(event_loop);
         }
         self.pad.context = Some(context);
-        if !self.settings.controller.enabled {
+        if !self.settings.controller.enabled && !touch_input::touch_enabled() {
             self.pad_output_off();
             self.pad_cancel_inputs(event_loop);
             // The radial menu closed with the pad: its overlay fades out, as for a cancel.
@@ -431,7 +432,8 @@ impl Game<'_> {
         }
         self.ui.options.pad_glyphs = Glyphs::of(&self.settings.controller, self.pad.style);
         self.ui.options.pad_driving = self.pad.in_use && self.pad_focus_mode();
-        let mut state = hardware.merge(&self.pad.injected);
+        let touch = self.touch_pad_state();
+        let mut state = hardware.merge(&self.pad.injected).merge(&touch);
         let activity = self.pad.activity.observe(&state, &self.settings.controller);
         for (i, (stick, deadzone)) in [
             (&mut state.left, self.settings.controller.move_deadzone),

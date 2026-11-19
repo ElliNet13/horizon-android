@@ -1191,6 +1191,7 @@ struct Game<'a> {
     last_input: Instant,
     /// Controllers (Horizon's own).
     pad: pad::Pads,
+    touch: touch_input::TouchInput,
     frames: u64,
     /// The glint clock and options, read once per frame (game/interface/item_draw.rs).
     glint_frame: horizon_client::item_render::GlintFrame,
@@ -4656,6 +4657,7 @@ impl Game<'_> {
         self.frame_graph
             .draw(self.settings.horizon.overlay, &mut batch, &self.gui.atlas);
         self.draw_pad_over_hud(&mut batch);
+        self.draw_touch(&mut batch);
         batch
     }
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
@@ -8811,6 +8813,12 @@ impl Game<'_> {
     /// it a handler both can call and a `gamepad::Route` (screenshot and fullscreen do this). A
     /// screen's own raw keys, text and mods' key hooks stay raw on purpose.
     fn handle_window_event_inner(&mut self, event_loop: &dyn EventLoopCtl, mut event: WindowEvent) {
+        if let WindowEvent::Touch(touch) = &event
+            && touch_input::touch_enabled()
+        {
+            self.touch_event(event_loop, touch);
+            return;
+        }
         let pressed = match &event {
             WindowEvent::KeyboardInput { event, .. } => {
                 event.state == ElementState::Pressed && !event.repeat
@@ -10565,6 +10573,7 @@ impl<'a> Game<'a> {
             previous: now,
             last_input: now,
             pad: Default::default(),
+            touch: Default::default(),
             frames: 0,
             glint_frame: Default::default(),
             kept_block_entities: Default::default(),
