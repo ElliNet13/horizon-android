@@ -46,7 +46,15 @@ pub fn prepare_main() {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+// Android: the game must run on the activity's own thread (winit polls that thread's looper), whose
+// stack is small, so there is nothing to reserve or re-exec. Guests (mods) are not supported there,
+// and `inspect_current` below refuses to enter one.
+#[cfg(target_os = "android")]
+fn prepare() -> std::io::Result<()> {
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
 fn prepare() -> std::io::Result<()> {
     // Executable link settings reserve the same stack on Windows and macOS.
     inspect_current().map_err(std::io::Error::other)
@@ -119,7 +127,7 @@ pub fn check_current() -> Result<(), &'static str> {
 }
 
 fn inspect_current() -> Result<(), &'static str> {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         let mut attr = std::mem::MaybeUninit::<libc::pthread_attr_t>::uninit();
         // SAFETY: pthread_self is live and attr is writable. Destroy only on success.
@@ -154,9 +162,9 @@ fn inspect_current() -> Result<(), &'static str> {
             return Err("GuestStackUnavailable: calling thread needs 136 MiB of stack");
         }
     }
-    #[cfg(not(any(target_os = "linux", target_vendor = "apple", windows)))]
+    #[cfg(not(any(target_os = "linux", target_os = "android", target_vendor = "apple", windows)))]
     return Err("GuestStackUnavailable: stack inspection is unsupported on this platform");
-    #[cfg(any(target_os = "linux", target_vendor = "apple", windows))]
+    #[cfg(any(target_os = "linux", target_os = "android", target_vendor = "apple", windows))]
     Ok(())
 }
 
