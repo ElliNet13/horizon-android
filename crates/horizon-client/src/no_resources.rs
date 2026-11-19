@@ -18,6 +18,9 @@ const BUTTON_GAP: f32 = 12.0;
 pub enum Action {
     /// Open the hook's page.
     Open(&'static str),
+    /// Unpack a prepared resources zip the player put in the game folder (phones, where the
+    /// preparer cannot run).
+    ImportZip,
     Quit,
 }
 
@@ -28,6 +31,8 @@ pub struct NoResources {
     buttons: Vec<(String, Action)>,
     /// Where the prepared files were looked for, for whoever starts the game by hand on purpose.
     looked_in: String,
+    /// What the import is doing or how it ended, below the paragraphs.
+    status: Option<String>,
 }
 
 impl NoResources {
@@ -62,7 +67,26 @@ impl NoResources {
             paragraphs,
             buttons,
             looked_in: lang::tr("horizon.no_resources.looked_in", &[&shown.display()]),
+            status: None,
         }
+    }
+
+    /// Adds the Import button and says where the zip goes (`zip` is shown to the player).
+    pub fn offer_import(&mut self, zip: &std::path::Path) {
+        let shown = std::path::absolute(zip).unwrap_or_else(|_| zip.to_path_buf());
+        self.paragraphs.push(lang::tr(
+            "horizon.no_resources.import_about",
+            &[&shown.display()],
+        ));
+        self.buttons.insert(
+            0,
+            (lang::get("horizon.no_resources.import"), Action::ImportZip),
+        );
+    }
+
+    /// The line under the paragraphs; `None` clears it.
+    pub fn set_status(&mut self, status: Option<String>) {
+        self.status = status;
     }
 
     /// The buttons' labels, actions and rectangles in dp, and the paragraphs' wrapped
@@ -73,6 +97,7 @@ impl NoResources {
         let lines: Vec<Vec<String>> = self
             .paragraphs
             .iter()
+            .chain(self.status.iter())
             .map(|p| wrap(ui, Face::Regular, body(), p, width))
             .collect();
         let text_h = lines.iter().map(|l| l.len() as f32 * LINE).sum::<f32>()
@@ -134,8 +159,10 @@ impl NoResources {
         for button in &layout.buttons {
             let hovered = button.contains(ui.cursor);
             let (plate, ink) = match (button.action, hovered) {
-                (Action::Open(_), false) => (color::accent(), color::on_accent()),
-                (Action::Open(_), true) => {
+                (Action::Open(_) | Action::ImportZip, false) => {
+                    (color::accent(), color::on_accent())
+                }
+                (Action::Open(_) | Action::ImportZip, true) => {
                     (color::with_alpha(color::accent(), 0.85), color::on_accent())
                 }
                 (Action::Quit, false) => (color::raised(), color::text()),
