@@ -17,6 +17,21 @@ pub fn set_event_loop_hook(hook: fn(&mut winit::event_loop::EventLoopBuilder<()>
 }
 
 /// The window loop for the game's own windows: winit's default, shaped by [`set_event_loop_hook`].
+/// What a platform offers on the no-prepared-files screen to get the game files itself (Android:
+/// fetch a Java runtime and prepare on the device): given the folder the files belong in and a
+/// progress callback, it returns a message for the player or the reason it failed.
+pub type PrepareHook = fn(&std::path::Path, &dyn Fn(&str)) -> Result<String, String>;
+
+static PREPARE_HOOK: std::sync::OnceLock<PrepareHook> = std::sync::OnceLock::new();
+
+pub fn set_prepare_hook(hook: PrepareHook) {
+    let _ = PREPARE_HOOK.set(hook);
+}
+
+pub(crate) fn prepare_hook() -> Option<PrepareHook> {
+    PREPARE_HOOK.get().copied()
+}
+
 pub(crate) fn new_event_loop() -> Result<winit::event_loop::EventLoop<()>, winit::error::EventLoopError>
 {
     let mut builder = winit::event_loop::EventLoop::builder();

@@ -21,6 +21,8 @@ pub enum Action {
     /// Unpack a prepared resources zip the player put in the game folder (phones, where the
     /// preparer cannot run).
     ImportZip,
+    /// Get the files on this device, through the platform's hook.
+    Prepare,
     Quit,
 }
 
@@ -81,6 +83,19 @@ impl NoResources {
         self.buttons.insert(
             0,
             (lang::get("horizon.no_resources.import"), Action::ImportZip),
+        );
+    }
+
+    /// Adds the button for the platform's own preparing (`entry::set_prepare_hook`).
+    pub fn offer_prepare(&mut self) {
+        self.paragraphs
+            .push(lang::get("horizon.no_resources.prepare_about"));
+        self.buttons.insert(
+            0,
+            (
+                lang::get("horizon.no_resources.prepare_button"),
+                Action::Prepare,
+            ),
         );
     }
 
@@ -159,10 +174,10 @@ impl NoResources {
         for button in &layout.buttons {
             let hovered = button.contains(ui.cursor);
             let (plate, ink) = match (button.action, hovered) {
-                (Action::Open(_) | Action::ImportZip, false) => {
+                (Action::Open(_) | Action::ImportZip | Action::Prepare, false) => {
                     (color::accent(), color::on_accent())
                 }
-                (Action::Open(_) | Action::ImportZip, true) => {
+                (Action::Open(_) | Action::ImportZip | Action::Prepare, true) => {
                     (color::with_alpha(color::accent(), 0.85), color::on_accent())
                 }
                 (Action::Quit, false) => (color::raised(), color::text()),

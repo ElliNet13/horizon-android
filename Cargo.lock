@@ -1795,8 +1795,13 @@ dependencies = [
  "android_logger",
  "horizon-client",
  "horizon-game",
+ "libc",
  "log",
+ "sha2",
+ "tar",
+ "ureq",
  "winit",
+ "xz4rust",
 ]
 
 [[package]]
@@ -7344,6 +7349,9 @@ name = "xz4rust"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "606930b71bad6379f366994e4e6252a3462fa28bfc3695c33b07bef8f967d6d6"
+dependencies = [
+ "sha2",
+]
 
 [[package]]
 name = "yaml-rust2"
