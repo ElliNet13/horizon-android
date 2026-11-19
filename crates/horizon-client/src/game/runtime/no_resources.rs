@@ -3,8 +3,24 @@
 //! (`horizon_client::no_resources`) and quits when it is closed. No loader, no
 //! crash report: nothing went wrong in the game.
 use super::*;
+use horizon_client::lang;
 use horizon_client::no_resources::{Action, NoResources};
-use winit::event::MouseButton;
+use std::sync::Mutex;
+use winit::event::{MouseButton, TouchPhase};
+
+/// Where an import of a prepared resources zip stands (`import_zip`, on its own thread).
+enum Import {
+    Running(String),
+    Done,
+    Failed(String),
+}
+
+/// The zip the player puts in the game folder (the working directory) on a phone.
+const IMPORT_ZIP: &str = "horizon-resources.zip";
+
+fn import_offered() -> bool {
+    cfg!(target_os = "android") || std::env::var_os("HORIZON_IMPORT").is_some()
+}
 
 struct Missing {
     window: Option<Arc<Window>>,
@@ -16,6 +32,10 @@ struct Missing {
     api: horizon_client::graphics::GraphicsApi,
     settings: Settings,
     error: Option<Box<dyn std::error::Error>>,
+    /// The running or finished import, shared with its thread.
+    import: Option<Arc<Mutex<Import>>>,
+    /// Where the prepared files go.
+    root: std::path::PathBuf,
 }
 
 /// Shows the screen until the player closes it.
@@ -40,7 +60,12 @@ pub(super) fn show(looked_in: &std::path::Path, settings: &Settings) -> Result<(
         api: settings.horizon.api,
         settings: settings.clone(),
         error: None,
+        import: None,
+        root: looked_in.to_path_buf(),
     };
+    if import_offered() {
+        app.screen.offer_import(std::path::Path::new(IMPORT_ZIP));
+    }
 
     crate::entry::new_event_loop()?.run_app(&mut app)?;
     app.error.map_or(Ok(()), Err)
@@ -93,8 +118,56 @@ impl Missing {
         match self.with_ui(&mut batch, |ui| self.screen.click(ui)) {
             Some(Action::Open(address)) => packs::open_uri(address),
             Some(Action::Quit) => event_loop.exit(),
+            Some(Action::ImportZip) => self.start_import(),
             None => {}
         }
+    }
+
+    fn start_import(&mut self) {
+        if self
+            .import
+            .as_ref()
+            .is_some_and(|i| matches!(*i.lock().unwrap(), Import::Running(_)))
+        {
+            return;
+        }
+        let zip = std::path::PathBuf::from(IMPORT_ZIP);
+        if !zip.is_file() {
+            let shown = std::path::absolute(&zip).unwrap_or(zip);
+            self.screen.set_status(Some(lang::tr(
+                "horizon.no_resources.import_missing",
+                &[&shown.display()],
+            )));
+            return;
+        }
+        let state = Arc::new(Mutex::new(Import::Running(String::new())));
+        self.import = Some(state.clone());
+        let root = self.root.clone();
+        std::thread::spawn(move || {
+            let progress = |entry: &str| *state.lock().unwrap() = Import::Running(entry.to_owned());
+            let end = match import_zip(&zip, &root, &progress) {
+                Ok(()) => Import::Done,
+                Err(error) => Import::Failed(error),
+            };
+            *state.lock().unwrap() = end;
+        });
+    }
+
+    /// Copies the import's state onto the screen; true while it is still working.
+    fn show_import(&mut self) -> bool {
+        let Some(state) = &self.import else {
+            return false;
+        };
+        let (text, running) = match &*state.lock().unwrap() {
+            Import::Running(entry) => (lang::tr("horizon.no_resources.importing", &[entry]), true),
+            Import::Done => (lang::get("horizon.no_resources.import_done"), false),
+            Import::Failed(error) => (
+                lang::tr("horizon.no_resources.import_failed", &[error]),
+                false,
+            ),
+        };
+        self.screen.set_status(Some(text));
+        running
     }
 }
 
@@ -157,6 +230,13 @@ impl ApplicationHandler for Missing {
                 button: MouseButton::Left,
                 ..
             } => self.click(event_loop),
+            WindowEvent::Touch(touch) => {
+                self.pointer = (touch.location.x, touch.location.y);
+                if touch.phase == TouchPhase::Ended {
+                    self.click(event_loop);
+                }
+                window.request_redraw();
+            }
             WindowEvent::KeyboardInput { event, .. }
                 if event.state == ElementState::Pressed
                     && event.physical_key == PhysicalKey::Code(KeyCode::Escape) =>
@@ -172,9 +252,75 @@ impl ApplicationHandler for Missing {
             event_loop.exit();
             return;
         }
+        if self.show_import() {
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
+        }
         // Wake now and then for Ctrl+C in the console; redraws come with events.
         event_loop.set_control_flow(ControlFlow::WaitUntil(
             Instant::now() + Duration::from_millis(250),
         ));
     }
+}
+
+/// Unpacks a prepared resources zip into `root`: the zip holds the contents of the prepared
+/// folder (`horizon-resources.json` and the rest), at its top or inside one folder. It is
+/// extracted beside `root`, checked like a normal start would, and only then moved in place.
+fn import_zip(
+    zip: &std::path::Path,
+    root: &std::path::Path,
+    progress: &dyn Fn(&str),
+) -> std::result::Result<(), String> {
+    let file = std::fs::File::open(zip).map_err(|e| e.to_string())?;
+    let mut archive = ::zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+    let name = root.file_name().ok_or("no folder name")?.to_owned();
+    let partial = root.with_file_name(format!("{}.partial", name.to_string_lossy()));
+    if partial.exists() {
+        std::fs::remove_dir_all(&partial).map_err(|e| e.to_string())?;
+    }
+    // A zip made by zipping the prepared folder itself has one folder around everything.
+    let wrapped = (0..archive.len()).all(|i| {
+        archive.by_index(i).ok().is_some_and(|f| {
+            f.enclosed_name().is_some_and(|p| {
+                p.components()
+                    .next()
+                    .is_some_and(|c| c.as_os_str() == name.as_os_str())
+            })
+        })
+    });
+    let count = archive.len();
+    for i in 0..count {
+        let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
+        let Some(path) = entry.enclosed_name() else {
+            continue;
+        };
+        let path = if wrapped {
+            path.components().skip(1).collect::<std::path::PathBuf>()
+        } else {
+            path
+        };
+        if path.as_os_str().is_empty() {
+            continue;
+        }
+        let target = partial.join(&path);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        progress(&format!("{}/{} {}", i + 1, count, path.display()));
+        let mut out = std::fs::File::create(&target).map_err(|e| e.to_string())?;
+        std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
+    }
+    if let Some(problem) = missing_resources(&partial, None) {
+        let _ = std::fs::remove_dir_all(&partial);
+        return Err(problem.lines().next().unwrap_or_default().to_owned());
+    }
+    if root.exists() {
+        std::fs::remove_dir_all(root).map_err(|e| e.to_string())?;
+    }
+    std::fs::rename(&partial, root).map_err(|e| e.to_string())
 }
