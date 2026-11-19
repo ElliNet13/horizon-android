@@ -1,3 +1,8 @@
+> **This is an Android fork of [Horizon](https://github.com/horizon-rust/horizon).** It is upstream plus a small
+> overlay (touch controls, an Android entry crate), rebased onto upstream's `main` every day.
+> **Build the APK:** see [android/README.md](android/README.md).
+> **Once upstream ships Android support, use upstream and drop this fork.**
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/media/readme/title-dark.png">
