@@ -9,6 +9,8 @@
 # rebase on its own; the script lists what was dropped. On a conflict it stops, as git does: fix, `git
 # rebase --continue`, and run it again.
 set -euo pipefail
+# The remote that points at horizon-rust/horizon: found by URL, or added as "upstream".
+UPSTREAM=${UPSTREAM:-$(git remote -v | awk '/horizon-rust\/horizon(\.git)? \(fetch\)/ {print $1; exit}')}
 UPSTREAM=${UPSTREAM:-upstream}
 BRANCH=${BRANCH:-android}
 URL=https://github.com/horizon-rust/horizon.git
@@ -23,4 +25,5 @@ after=$(git rev-list --count "$UPSTREAM/main..$BRANCH")
 echo "overlay: $before commits before, $after after ($((before - after)) now in upstream)"
 echo "still on top of upstream:"
 git log --format='  %h %s' "$UPSTREAM/main..$BRANCH"
+echo "push with: git push --force-with-lease <your-fork-remote> $BRANCH"
 echo "next: cargo check -p horizon-client --no-default-features && cargo check -p horizon-android"
