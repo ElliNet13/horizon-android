@@ -1,0 +1,320 @@
+//! A Java runtime on the device, fetched at run time from Termux's package repository (so the APK
+//! carries none) and removed again when the game files are prepared.
+//!
+//! Termux builds OpenJDK against Android's own C library, which no other source offers for Java 25.
+//! The packages are `.deb` archives built for Termux's install prefix; this unpacks them (and what
+//! they depend on, resolved from the repository's index) into one folder that stands in for that
+//! prefix. Nothing here is pinned to a version: the index names the current package and its
+//! SHA-256, and a download is used only if it matches.
+
+use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
+
+const REPO: &str = "https://packages.termux.dev/apt/termux-main";
+const INDEX: &str = "dists/stable/main/binary-aarch64/Packages";
+/// Where Termux's packages are rooted inside their archives.
+const PREFIX: &str = "data/data/com.termux/files/usr";
+/// What a package's absolute links and paths say, to be rewritten to the folder it is unpacked to.
+const PREFIX_ABSOLUTE: &str = "/data/data/com.termux/files/usr";
+const JAVA_PACKAGE: &str = "openjdk-25";
+
+/// One package of the repository's index.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Package {
+    pub name: String,
+    pub depends: Vec<String>,
+    pub provides: Vec<String>,
+    pub filename: String,
+    pub size: u64,
+    pub sha256: String,
+}
+
+/// The packages of an apt `Packages` index, by name.
+pub fn parse_index(text: &str) -> HashMap<String, Package> {
+    let mut packages = HashMap::new();
+    for stanza in text.split("\n\n") {
+        let mut package = Package::default();
+        for line in stanza.lines() {
+            let Some((key, value)) = line.split_once(':') else {
+                continue;
+            };
+            let value = value.trim();
+            match key {
+                "Package" => package.name = value.to_owned(),
+                "Depends" | "Pre-Depends" => package.depends.extend(
+                    value
+                        .split(',')
+                        .map(|d| d.trim().to_owned())
+                        .filter(|d| !d.is_empty()),
+                ),
+                "Provides" => package
+                    .provides
+                    .extend(value.split(',').map(|p| bare_name(p).to_owned())),
+                "Filename" => package.filename = value.to_owned(),
+                "Size" => package.size = value.parse().unwrap_or(0),
+                "SHA256" => package.sha256 = value.to_ascii_lowercase(),
+                _ => {}
+            }
+        }
+        if !package.name.is_empty() && !package.filename.is_empty() {
+            packages.insert(package.name.clone(), package);
+        }
+    }
+    packages
+}
+
+/// `libfoo (>= 1.2)` and `a | b`'s first choice, as a bare package name.
+fn bare_name(dependency: &str) -> &str {
+    let first = dependency.split('|').next().unwrap_or(dependency);
+    first.split('(').next().unwrap_or(first).trim()
+}
+
+/// `root` and everything it depends on, dependencies first. A name no package carries is skipped
+/// (Android's own libraries, such as libc, are not in the repository).
+pub fn resolve<'a>(index: &'a HashMap<String, Package>, root: &str) -> Result<Vec<&'a Package>, String> {
+    let provided: HashMap<&str, &Package> = index
+        .values()
+        .flat_map(|p| p.provides.iter().map(move |name| (name.as_str(), p)))
+        .collect();
+    let mut order = Vec::new();
+    let mut seen = HashSet::new();
+    let start = index
+        .get(root)
+        .ok_or_else(|| format!("the repository has no {root}"))?;
+    let mut stack = vec![(start, false)];
+    while let Some((package, expanded)) = stack.pop() {
+        if expanded {
+            order.push(package);
+            continue;
+        }
+        if !seen.insert(package.name.as_str()) {
+            continue;
+        }
+        stack.push((package, true));
+        for dependency in &package.depends {
+            let name = bare_name(dependency);
+            if let Some(next) = index.get(name).or_else(|| provided.get(name).copied()) {
+                stack.push((next, false));
+            }
+        }
+    }
+    Ok(order)
+}
+
+/// Streams `url` to `to`, returning its SHA-256.
+fn download(url: &str, to: &Path) -> Result<String, String> {
+    let response = ureq::get(url).call().map_err(|e| format!("{url}: {e}"))?;
+    let mut body = response.into_reader();
+    let mut file = fs::File::create(to).map_err(|e| format!("{}: {e}", to.display()))?;
+    let mut hash = Sha256::new();
+    let mut buffer = vec![0u8; 1 << 16];
+    loop {
+        let n = body.read(&mut buffer).map_err(|e| format!("{url}: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        hash.update(&buffer[..n]);
+        file.write_all(&buffer[..n])
+            .map_err(|e| format!("{}: {e}", to.display()))?;
+    }
+    Ok(hash.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Unpacks a Termux `.deb` into `dest`, which takes the place of the package's install prefix.
+pub fn extract_deb(deb: &Path, dest: &Path) -> Result<(), String> {
+    let mut file = fs::File::open(deb).map_err(|e| e.to_string())?;
+    let mut magic = [0u8; 8];
+    file.read_exact(&mut magic).map_err(|e| e.to_string())?;
+    if &magic != b"!<arch>\n" {
+        return Err(format!("{}: not a deb", deb.display()));
+    }
+    loop {
+        let mut header = [0u8; 60];
+        if file.read_exact(&mut header).is_err() {
+            return Err(format!("{}: no data archive", deb.display()));
+        }
+        let name = String::from_utf8_lossy(&header[..16]).trim().to_owned();
+        let size: u64 = String::from_utf8_lossy(&header[48..58])
+            .trim()
+            .parse()
+            .map_err(|_| "bad archive header".to_owned())?;
+        if !name.starts_with("data.tar") {
+            file.seek(SeekFrom::Current((size + size % 2) as i64))
+                .map_err(|e| e.to_string())?;
+            continue;
+        }
+        if !name.ends_with(".xz") {
+            return Err(format!("{}: unsupported archive {name}", deb.display()));
+        }
+        let decoder = xz4rust::XzDecoder::in_heap_with_alloc_dict_size(1 << 20, 1 << 27);
+        let buffer = std::num::NonZeroUsize::new(1 << 16).expect("non-zero");
+        let reader =
+            xz4rust::XzReader::new_with_buffer_size_and_decoder(file.take(size), buffer, decoder);
+        return untar(reader, dest);
+    }
+}
+
+/// The path a data entry belongs at inside `dest`, or `None` for entries outside the prefix.
+fn inside(entry: &Path) -> Option<PathBuf> {
+    let mut parts = entry.components().filter_map(|c| match c {
+        std::path::Component::Normal(p) => Some(p),
+        _ => None,
+    });
+    let wanted: Vec<_> = PREFIX.split('/').collect();
+    for w in &wanted {
+        if parts.next()? != *w {
+            return None;
+        }
+    }
+    let rest: PathBuf = parts.collect();
+    Some(rest)
+}
+
+fn untar(reader: impl Read, dest: &Path) -> Result<(), String> {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let absolute = fs::canonicalize(dest).unwrap_or_else(|_| dest.to_path_buf());
+    let mut archive = tar::Archive::new(reader);
+    for entry in archive.entries().map_err(|e| e.to_string())? {
+        let mut entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path().map_err(|e| e.to_string())?.into_owned();
+        let Some(rel) = inside(&path) else {
+            continue;
+        };
+        let target = dest.join(&rel);
+        let kind = entry.header().entry_type();
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        if kind.is_dir() {
+            fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+        } else if kind.is_symlink() {
+            let link = entry
+                .link_name()
+                .map_err(|e| e.to_string())?
+                .ok_or("symlink without a target")?
+                .into_owned();
+            let link = match link.to_str().and_then(|l| l.strip_prefix(PREFIX_ABSOLUTE)) {
+                Some(rest) => absolute.join(rest.trim_start_matches('/')),
+                None => link,
+            };
+            let _ = fs::remove_file(&target);
+            symlink(&link, &target).map_err(|e| format!("{}: {e}", target.display()))?;
+        } else if kind.is_hard_link() {
+            let from = entry
+                .link_name()
+                .map_err(|e| e.to_string())?
+                .ok_or("hard link without a target")?
+                .into_owned();
+            if let Some(from) = inside(&from) {
+                let _ = fs::remove_file(&target);
+                fs::copy(dest.join(from), &target)
+                    .map_err(|e| format!("{}: {e}", target.display()))?;
+            }
+        } else if kind.is_file() {
+            let mode = entry.header().mode().unwrap_or(0o644);
+            let _ = fs::remove_file(&target);
+            let mut out =
+                fs::File::create(&target).map_err(|e| format!("{}: {e}", target.display()))?;
+            std::io::copy(&mut entry, &mut out)
+                .map_err(|e| format!("{}: {e}", target.display()))?;
+            fs::set_permissions(&target, fs::Permissions::from_mode(mode | 0o600))
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+/// The Java runtime's folder inside an unpacked prefix (`lib/jvm/java-25-openjdk`).
+pub fn java_home(prefix: &Path) -> Option<PathBuf> {
+    let jvm = prefix.join("lib/jvm");
+    fs::read_dir(&jvm)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.join("bin/java").exists())
+}
+
+/// Downloads and unpacks Java 25 and its dependencies into `prefix`, reporting each step.
+pub fn install_java(prefix: &Path, progress: &dyn Fn(&str)) -> Result<PathBuf, String> {
+    let work = prefix.join(".downloads");
+    fs::create_dir_all(&work).map_err(|e| e.to_string())?;
+    progress("the package index");
+    let index_path = work.join("Packages");
+    download(&format!("{REPO}/{INDEX}"), &index_path)?;
+    let text = fs::read_to_string(&index_path).map_err(|e| e.to_string())?;
+    let index = parse_index(&text);
+    let packages = resolve(&index, JAVA_PACKAGE)?;
+    let total = packages.len();
+    for (i, package) in packages.iter().enumerate() {
+        progress(&format!("{}/{} {}", i + 1, total, package.name));
+        let deb = work.join(format!("{}.deb", package.name));
+        let hash = download(&format!("{REPO}/{}", package.filename), &deb)?;
+        if hash != package.sha256 {
+            return Err(format!("{}: checksum does not match the index", package.name));
+        }
+        extract_deb(&deb, prefix)?;
+        let _ = fs::remove_file(&deb);
+    }
+    let _ = fs::remove_dir_all(&work);
+    java_home(prefix).ok_or_else(|| "the Java package has no bin/java".to_owned())
+}
+
+/// What a command needs to run Java from an unpacked prefix: Android's loader runs the program (an
+/// app may not execute files from its own folder directly), the libraries are found in the
+/// prefix, and the launcher is told where it lives (its own lookup, `/proc/self/exe`, would name
+/// the loader: `crate::preload` answers that read).
+pub fn java_command(prefix: &Path, home: &Path, preload: Option<&Path>) -> std::process::Command {
+    let mut command = std::process::Command::new("/system/bin/linker64");
+    command.arg(home.join("bin/java"));
+    let libs = format!(
+        "{}:{}:{}",
+        prefix.join("lib").display(),
+        home.join("lib").display(),
+        home.join("lib/server").display()
+    );
+    command
+        .env("LD_LIBRARY_PATH", libs)
+        .env("JAVA_HOME", home)
+        .env("TMPDIR", prefix.join("tmp"))
+        .env("HORIZON_PROC_SELF_EXE", home.join("bin/java"));
+    if let Some(preload) = preload {
+        command.env("LD_PRELOAD", preload);
+    }
+    let _ = fs::create_dir_all(prefix.join("tmp"));
+    command
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const INDEX_TEXT: &str = "Package: openjdk-25\nVersion: 25-1\nDepends: libandroid-shmem, zlib (>= 1.2) | libz, libjpeg\nFilename: pool/main/o/openjdk-25/openjdk-25_25-1_aarch64.deb\nSize: 10\nSHA256: ABCD\n\nPackage: libandroid-shmem\nDepends: libc++\nFilename: pool/a.deb\nSize: 1\nSHA256: 01\n\nPackage: libc++\nFilename: pool/b.deb\nSize: 1\nSHA256: 02\n\nPackage: zlib\nProvides: libz\nFilename: pool/z.deb\nSize: 1\nSHA256: 03\n";
+
+    #[test]
+    fn resolves_dependencies_first_skipping_unknown_names() {
+        let index = parse_index(INDEX_TEXT);
+        let names: Vec<_> = resolve(&index, "openjdk-25")
+            .unwrap()
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
+        // libjpeg is not in this index and is skipped; zlib is taken by its first alternative.
+        assert_eq!(names.last(), Some(&"openjdk-25"));
+        let at = |n: &str| names.iter().position(|x| *x == n).unwrap();
+        assert!(at("libc++") < at("libandroid-shmem"));
+        assert!(names.contains(&"zlib"));
+        assert_eq!(index["openjdk-25"].sha256, "abcd");
+    }
+
+    #[test]
+    fn entries_outside_the_prefix_are_skipped() {
+        assert_eq!(
+            inside(Path::new("./data/data/com.termux/files/usr/lib/a.so")),
+            Some(PathBuf::from("lib/a.so"))
+        );
+        assert_eq!(inside(Path::new("./etc/passwd")), None);
+    }
+}

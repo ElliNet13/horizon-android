@@ -10,7 +10,15 @@ publish = false
 [lib]
 crate-type = ["cdylib"]
 
-# Everything is Android-only: on other targets the crate is empty, so the workspace builds as before.
+# The Java runtime fetch (`provision`) builds everywhere, so its tests run on a desktop.
+[dependencies]
+sha2 = "0.10.9"
+tar = { version = "0.4", default-features = false }
+ureq = { version = "2", default-features = false, features = ["tls"] }
+xz4rust = "0.2.3"
+libc = "0.2"
+
+# The rest is Android-only: on other targets the entry is empty, so the workspace builds as before.
 [target.'cfg(target_os = "android")'.dependencies]
 horizon-game = { path = "../horizon-game", default-features = false }
 horizon-client = { path = "../horizon-client", default-features = false }

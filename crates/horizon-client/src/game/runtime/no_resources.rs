@@ -11,7 +11,8 @@ use winit::event::{MouseButton, TouchPhase};
 /// Where an import of a prepared resources zip stands (`import_zip`, on its own thread).
 enum Import {
     Running(String),
-    Done,
+    /// Finished; the platform's message, or none for an import.
+    Done(Option<String>),
     Failed(String),
 }
 
@@ -34,6 +35,8 @@ struct Missing {
     error: Option<Box<dyn std::error::Error>>,
     /// The running or finished import, shared with its thread.
     import: Option<Arc<Mutex<Import>>>,
+    /// Whether that job is the platform's preparing, not a zip import.
+    preparing: bool,
     /// Where the prepared files go.
     root: std::path::PathBuf,
 }
@@ -61,8 +64,12 @@ pub(super) fn show(looked_in: &std::path::Path, settings: &Settings) -> Result<(
         settings: settings.clone(),
         error: None,
         import: None,
+        preparing: false,
         root: looked_in.to_path_buf(),
     };
+    if crate::entry::prepare_hook().is_some() {
+        app.screen.offer_prepare();
+    }
     if import_offered() {
         app.screen.offer_import(std::path::Path::new(IMPORT_ZIP));
     }
@@ -119,6 +126,7 @@ impl Missing {
             Some(Action::Open(address)) => packs::open_uri(address),
             Some(Action::Quit) => event_loop.exit(),
             Some(Action::ImportZip) => self.start_import(),
+            Some(Action::Prepare) => self.start_prepare(),
             None => {}
         }
     }
@@ -146,7 +154,32 @@ impl Missing {
         std::thread::spawn(move || {
             let progress = |entry: &str| *state.lock().unwrap() = Import::Running(entry.to_owned());
             let end = match import_zip(&zip, &root, &progress) {
-                Ok(()) => Import::Done,
+                Ok(()) => Import::Done(None),
+                Err(error) => Import::Failed(error),
+            };
+            *state.lock().unwrap() = end;
+        });
+    }
+
+    fn start_prepare(&mut self) {
+        let Some(hook) = crate::entry::prepare_hook() else {
+            return;
+        };
+        if self
+            .import
+            .as_ref()
+            .is_some_and(|i| matches!(*i.lock().unwrap(), Import::Running(_)))
+        {
+            return;
+        }
+        let state = Arc::new(Mutex::new(Import::Running(String::new())));
+        self.import = Some(state.clone());
+        self.preparing = true;
+        let root = self.root.clone();
+        std::thread::spawn(move || {
+            let progress = |text: &str| *state.lock().unwrap() = Import::Running(text.to_owned());
+            let end = match hook(&root, &progress) {
+                Ok(message) => Import::Done(Some(message)),
                 Err(error) => Import::Failed(error),
             };
             *state.lock().unwrap() = end;
@@ -158,13 +191,29 @@ impl Missing {
         let Some(state) = &self.import else {
             return false;
         };
+        let preparing = self.preparing;
         let (text, running) = match &*state.lock().unwrap() {
-            Import::Running(entry) => (lang::tr("horizon.no_resources.importing", &[entry]), true),
-            Import::Done => (lang::get("horizon.no_resources.import_done"), false),
-            Import::Failed(error) => (
-                lang::tr("horizon.no_resources.import_failed", &[error]),
+            Import::Running(entry) => {
+                let key = if preparing {
+                    "horizon.no_resources.preparing"
+                } else {
+                    "horizon.no_resources.importing"
+                };
+                (lang::tr(key, &[entry]), true)
+            }
+            Import::Done(Some(message)) => (
+                lang::tr("horizon.no_resources.prepare_done", &[message]),
                 false,
             ),
+            Import::Done(None) => (lang::get("horizon.no_resources.import_done"), false),
+            Import::Failed(error) => {
+                let key = if preparing {
+                    "horizon.no_resources.prepare_failed"
+                } else {
+                    "horizon.no_resources.import_failed"
+                };
+                (lang::tr(key, &[error]), false)
+            }
         };
         self.screen.set_status(Some(text));
         running
