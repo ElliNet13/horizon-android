@@ -11,7 +11,14 @@ pub fn prepare(root: &Path, progress: &dyn Fn(&str, Option<f32>)) -> Result<Stri
         .and_then(Path::parent)
         .and_then(Path::parent)
         .unwrap_or(Path::new("."));
-    let prefix = base.join("java-runtime");
+    // Java needs symbolic links and files the system may load, which the shared-storage game
+    // folder cannot hold (symlinks fail there with "permission denied"): use the app's private
+    // storage, and delete it afterwards.
+    let prefix = crate::entry::APP
+        .get()
+        .and_then(|app| app.internal_data_path())
+        .unwrap_or_else(|| base.to_path_buf())
+        .join("java-runtime");
     // Keep the processor running if the player switches to another app meanwhile.
     let _awake = crate::entry::APP
         .get()
