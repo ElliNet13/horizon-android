@@ -193,8 +193,16 @@ fn untar(reader: impl Read, dest: &Path) -> Result<(), String> {
         };
         let target = dest.join(&rel);
         let kind = entry.header().entry_type();
+        // Documentation and man pages are not needed to run Java, and some of them sit behind
+        // links that point outside the folder (permission denied): skip what cannot be written.
+        let optional = rel.starts_with("share");
         if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            if let Err(e) = fs::create_dir_all(parent) {
+                if optional {
+                    continue;
+                }
+                return Err(format!("{}: {e}", parent.display()));
+            }
         }
         if kind.is_dir() {
             fs::create_dir_all(&target).map_err(|e| e.to_string())?;
@@ -224,8 +232,11 @@ fn untar(reader: impl Read, dest: &Path) -> Result<(), String> {
         } else if kind.is_file() {
             let mode = entry.header().mode().unwrap_or(0o644);
             let _ = fs::remove_file(&target);
-            let mut out =
-                fs::File::create(&target).map_err(|e| format!("{}: {e}", target.display()))?;
+            let mut out = match fs::File::create(&target) {
+                Ok(out) => out,
+                Err(_) if optional => continue,
+                Err(e) => return Err(format!("{}: {e}", target.display())),
+            };
             std::io::copy(&mut entry, &mut out)
                 .map_err(|e| format!("{}: {e}", target.display()))?;
             fs::set_permissions(&target, fs::Permissions::from_mode(mode | 0o600))
