@@ -8,6 +8,8 @@
 pub mod provision;
 
 #[cfg(target_os = "android")]
+mod clipboard;
+#[cfg(target_os = "android")]
 mod entry;
 #[cfg(target_os = "android")]
 mod on_device;

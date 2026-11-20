@@ -39,5 +39,6 @@ fn android_main(app: AndroidApp) {
         }
     });
     horizon_client::entry::set_prepare_hook(crate::on_device::prepare);
+    horizon_client::entry::set_copy_hook(crate::clipboard::copy);
     horizon_game::main();
 }

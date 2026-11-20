@@ -29,6 +29,19 @@ pub fn set_prepare_hook(hook: PrepareHook) {
     let _ = PREPARE_HOOK.set(hook);
 }
 
+/// Puts text on the system clipboard (Android, where the keyboard shortcuts are not there).
+pub type CopyHook = fn(&str) -> bool;
+
+static COPY_HOOK: std::sync::OnceLock<CopyHook> = std::sync::OnceLock::new();
+
+pub fn set_copy_hook(hook: CopyHook) {
+    let _ = COPY_HOOK.set(hook);
+}
+
+pub(crate) fn copy_text(text: &str) -> bool {
+    COPY_HOOK.get().is_some_and(|hook| hook(text))
+}
+
 pub(crate) fn prepare_hook() -> Option<PrepareHook> {
     PREPARE_HOOK.get().copied()
 }

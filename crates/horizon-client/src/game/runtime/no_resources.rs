@@ -41,6 +41,8 @@ struct Missing {
     root: std::path::PathBuf,
     /// The app is in the background: its surface is gone, so nothing is drawn.
     suspended: bool,
+    /// The error was copied: say so instead of the error's own text.
+    copied: bool,
 }
 
 /// Shows the screen until the player closes it.
@@ -69,6 +71,7 @@ pub(super) fn show(looked_in: &std::path::Path, settings: &Settings) -> Result<(
         preparing: false,
         root: looked_in.to_path_buf(),
         suspended: false,
+        copied: false,
     };
     if crate::entry::prepare_hook().is_some() {
         app.screen.offer_prepare();
@@ -138,6 +141,13 @@ impl Missing {
             Some(Action::Quit) => event_loop.exit(),
             Some(Action::ImportZip) => self.start_import(),
             Some(Action::Prepare) => self.start_prepare(),
+            Some(Action::CopyError) => {
+                if let Some(text) = self.screen.copyable().map(str::to_owned) {
+                    if crate::entry::copy_text(&text) {
+                        self.copied = true;
+                    }
+                }
+            }
             None => {}
         }
     }
@@ -234,6 +244,17 @@ impl Missing {
                 };
                 (lang::tr(key, &[error]), false, None)
             }
+        };
+        let failed = matches!(&*state.lock().unwrap(), Import::Failed(_));
+        // The copied message keeps the error's text; the button is there while it is a failure.
+        self.screen.set_copyable(failed.then(|| text.clone()));
+        if !failed {
+            self.copied = false;
+        }
+        let text = if self.copied {
+            format!("{text} {}", lang::get("horizon.no_resources.copied"))
+        } else {
+            text
         };
         self.screen.set_status(Some(text));
         self.screen.set_progress(fraction);

@@ -25,6 +25,44 @@ pub unsafe extern "C" fn readlink(
     }
 }
 
+/// The Java launcher starts itself again when it wants to change its environment, with `execve`
+/// on its own file, which Android refuses for files in an app's storage. A program under
+/// `HORIZON_EXEC_PREFIX` is started through the loader instead (`/system/bin/linker64 program
+/// args...`), which is how it ran in the first place.
+///
+/// # Safety
+/// Called by C code with `execve`'s contract: `path` a C string, `argv` and `envp` NULL-terminated
+/// arrays of C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn execve(
+    path: *const libc::c_char,
+    argv: *const *const libc::c_char,
+    envp: *const *const libc::c_char,
+) -> libc::c_int {
+    unsafe {
+        let prefix = libc::getenv(c"HORIZON_EXEC_PREFIX".as_ptr());
+        if !prefix.is_null()
+            && !path.is_null()
+            && libc::strncmp(path, prefix, libc::strlen(prefix)) == 0
+        {
+            let loader = c"/system/bin/linker64";
+            let mut args: Vec<*const libc::c_char> = vec![loader.as_ptr(), path];
+            if !argv.is_null() {
+                // The program's own name (argv[0]) is replaced by the path above.
+                let mut i = 1;
+                while !(*argv.add(i)).is_null() {
+                    args.push(*argv.add(i));
+                    i += 1;
+                }
+            }
+            args.push(std::ptr::null());
+            return libc::syscall(libc::SYS_execve, loader.as_ptr(), args.as_ptr(), envp)
+                as libc::c_int;
+        }
+        libc::syscall(libc::SYS_execve, path, argv, envp) as libc::c_int
+    }
+}
+
 /// This library's own path, for `LD_PRELOAD`, from the process's memory map.
 pub fn own_path() -> Option<std::path::PathBuf> {
     let maps = std::fs::read_to_string("/proc/self/maps").ok()?;
