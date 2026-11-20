@@ -191,6 +191,13 @@ fn untar(reader: impl Read, dest: &Path) -> Result<(), String> {
         let Some(rel) = inside(&path) else {
             continue;
         };
+        // Documentation is not needed to run Java: never unpack it.
+        if ["share/doc", "share/man", "share/info"]
+            .iter()
+            .any(|d| rel.starts_with(d))
+        {
+            continue;
+        }
         let target = dest.join(&rel);
         let kind = entry.header().entry_type();
         // Documentation and man pages are not needed to run Java, and some of them sit behind
