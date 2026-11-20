@@ -115,13 +115,13 @@ impl NoResources {
     /// How much larger than the design size the screen can be drawn and still fit the window
     /// (1 to 1.8): a phone held at arm's length wants bigger text and buttons.
     pub fn fit_zoom(&self, ui: &Ui) -> f32 {
-        (ui.h * 0.9 / self.layout(ui).height).clamp(1.0, 1.8)
+        (ui.h * SAFE_FRACTION / self.layout(ui).height).clamp(1.0, 1.8)
     }
 
     /// The buttons' labels, actions and rectangles in dp, and the paragraphs' wrapped
     /// lines: one layout for drawing and clicks.
     fn layout(&self, ui: &Ui) -> Layout {
-        let width = COLUMN.min(ui.w - 64.0).max(160.0);
+        let width = COLUMN.min(ui.w - 2.0 * SIDE_MARGIN).max(160.0);
         let x = ((ui.w - width) / 2.0).round();
         let lines: Vec<Vec<String>> = self
             .paragraphs
@@ -137,7 +137,7 @@ impl NoResources {
             0.0
         };
         let height = TITLE_LINE + 16.0 + text_h + bar_h + 28.0 + control() + 20.0 + SMALL_LINE;
-        let y = ((ui.h - height) / 2.0).max(24.0).round();
+        let y = ((ui.h - height) / 2.0).max(EDGE_MARGIN).round();
         let buttons_y = y + TITLE_LINE + 16.0 + text_h + bar_h + 28.0;
         let mut buttons = Vec::new();
         let mut bx = x;
@@ -271,6 +271,11 @@ fn button_text() -> f32 {
 }
 const SMALL_LINE: f32 = 18.0;
 /// The progress bar's thickness and its gap above, in dp.
+/// Room kept clear at the sides and at the top and bottom, in dp: a phone's rounded corners
+/// and edge display cut into the picture. The screen is sized to fill this fraction of the height.
+const SIDE_MARGIN: f32 = 48.0;
+const EDGE_MARGIN: f32 = 40.0;
+const SAFE_FRACTION: f32 = 0.74;
 const BAR: f32 = 10.0;
 const BAR_GAP: f32 = 10.0;
 fn control() -> f32 {

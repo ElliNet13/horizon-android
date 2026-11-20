@@ -140,7 +140,11 @@ pub fn extract_deb(deb: &Path, dest: &Path) -> Result<(), String> {
         if file.read_exact(&mut header).is_err() {
             return Err(format!("{}: no data archive", deb.display()));
         }
-        let name = String::from_utf8_lossy(&header[..16]).trim().to_owned();
+        // GNU `ar` ends a member name with a slash: `data.tar.xz/`.
+        let name = String::from_utf8_lossy(&header[..16])
+            .trim()
+            .trim_end_matches('/')
+            .to_owned();
         let size: u64 = String::from_utf8_lossy(&header[48..58])
             .trim()
             .parse()
@@ -334,6 +338,23 @@ mod tests {
         assert!(at("libc++") < at("libandroid-shmem"));
         assert!(names.contains(&"zlib"));
         assert_eq!(index["openjdk-25"].sha256, "abcd");
+    }
+
+    /// A real Termux-style `.deb` made with GNU ar naming (`data.tar.xz/`): a file under the prefix,
+    /// a link to an absolute path in it, and a file outside it.
+    #[test]
+    fn unpacks_a_deb_into_the_prefix() {
+        let dir = std::env::temp_dir().join(format!("horizon-deb-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let deb = dir.join("x.deb");
+        fs::write(&deb, include_bytes!("fixture.deb")).unwrap();
+        let dest = dir.join("usr");
+        extract_deb(&deb, &dest).unwrap();
+        assert_eq!(fs::read(dest.join("lib/libx.so")).unwrap(), b"hello");
+        assert_eq!(fs::read(dest.join("lib/liby.so")).unwrap(), b"hello");
+        assert!(!dest.join("etc").exists());
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
