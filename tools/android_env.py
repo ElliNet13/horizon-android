@@ -120,7 +120,16 @@ def start(serial: str | None, settings: list[str]) -> None:
 
 
 def cycle(serial: str | None, first: int) -> None:
-    """Space (or Enter) runs the next test, b the one before, r the same again, q quits."""
+    """Space (or Enter) runs the next test, b the one before, r the same again, q quits. The
+    settings file is emptied when it ends, so a test that breaks the app is not left behind."""
+    try:
+        run_cycle(serial, first)
+    finally:
+        write_settings(serial, [])
+        print("settings file emptied")
+
+
+def run_cycle(serial: str | None, first: int) -> None:
     position = first
     while True:
         settings = TESTS[position]
