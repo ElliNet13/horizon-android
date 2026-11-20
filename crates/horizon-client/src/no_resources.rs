@@ -23,6 +23,8 @@ pub enum Action {
     ImportZip,
     /// Get the files on this device, through the platform's hook.
     Prepare,
+    /// Copy the failure message to the clipboard, through the platform's hook.
+    CopyError,
     Quit,
 }
 
@@ -40,6 +42,8 @@ pub struct NoResources {
     /// Space is kept for the status and the bar from the start, so the screen does not move or
     /// change size when they appear.
     status_room: bool,
+    /// The failure message the Copy button copies, while there is one.
+    copyable: Option<String>,
 }
 
 impl NoResources {
@@ -77,6 +81,7 @@ impl NoResources {
             status: None,
             progress: None,
             status_room: false,
+            copyable: None,
         }
     }
 
@@ -106,6 +111,26 @@ impl NoResources {
                 Action::Prepare,
             ),
         );
+    }
+
+    /// Offers a Copy button for `message` (a failure), or removes it with `None`.
+    pub fn set_copyable(&mut self, message: Option<String>) {
+        if self.copyable == message {
+            return;
+        }
+        self.buttons.retain(|(_, a)| *a != Action::CopyError);
+        if message.is_some() {
+            let at = self.buttons.len().saturating_sub(1);
+            self.buttons.insert(
+                at,
+                (lang::get("horizon.no_resources.copy_error"), Action::CopyError),
+            );
+        }
+        self.copyable = message;
+    }
+
+    pub fn copyable(&self) -> Option<&str> {
+        self.copyable.as_deref()
     }
 
     /// The line under the paragraphs; `None` clears it.
@@ -239,8 +264,8 @@ impl NoResources {
                 (Action::Open(_) | Action::ImportZip | Action::Prepare, true) => {
                     (color::with_alpha(color::accent(), 0.85), color::on_accent())
                 }
-                (Action::Quit, false) => (color::raised(), color::text()),
-                (Action::Quit, true) => (color::hover(), color::text()),
+                (Action::Quit | Action::CopyError, false) => (color::raised(), color::text()),
+                (Action::Quit | Action::CopyError, true) => (color::hover(), color::text()),
             };
             let h = control();
             ui.rounded(button.x, button.y, button.w, h, h / 2.0, plate);

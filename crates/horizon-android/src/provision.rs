@@ -447,7 +447,8 @@ pub fn java_command(prefix: &Path, home: &Path, preload: Option<&Path>) -> std::
         .env("LD_LIBRARY_PATH", libs)
         .env("JAVA_HOME", home)
         .env("TMPDIR", prefix.join("tmp"))
-        .env("HORIZON_PROC_SELF_EXE", home.join("bin/java"));
+        .env("HORIZON_PROC_SELF_EXE", home.join("bin/java"))
+        .env("HORIZON_EXEC_PREFIX", prefix);
     if let Some(preload) = preload {
         command.env("LD_PRELOAD", preload);
     }
