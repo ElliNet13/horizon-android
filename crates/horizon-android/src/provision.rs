@@ -427,12 +427,15 @@ pub fn install_java(
     java_home(prefix).ok_or_else(|| "the Java package has no bin/java".to_owned())
 }
 
+/// Android's program loader, which runs the downloaded Java.
+pub const LOADER: &str = "/system/bin/linker64";
+
 /// What a command needs to run Java from an unpacked prefix: Android's loader runs the program (an
 /// app may not execute files from its own folder directly), the libraries are found in the
 /// prefix, and the launcher is told where it lives (its own lookup, `/proc/self/exe`, would name
 /// the loader: `crate::preload` answers that read).
 pub fn java_command(prefix: &Path, home: &Path, preload: Option<&Path>) -> std::process::Command {
-    let mut command = std::process::Command::new("/system/bin/linker64");
+    let mut command = std::process::Command::new(LOADER);
     command.arg(home.join("bin/java"));
     let libs = format!(
         "{}:{}:{}",
