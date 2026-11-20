@@ -20,8 +20,7 @@ pub fn set_event_loop_hook(hook: fn(&mut winit::event_loop::EventLoopBuilder<()>
 /// What a platform offers on the no-prepared-files screen to get the game files itself (Android:
 /// fetch a Java runtime and prepare on the device): given the folder the files belong in and a
 /// progress callback (what it is doing, and how far along, 0 to 1, when known), it returns a message for the player or the reason it failed.
-pub type PrepareHook =
-    fn(&std::path::Path, &dyn Fn(&str, Option<f32>)) -> Result<String, String>;
+pub type PrepareHook = fn(&std::path::Path, &dyn Fn(&str, Option<f32>)) -> Result<String, String>;
 
 static PREPARE_HOOK: std::sync::OnceLock<PrepareHook> = std::sync::OnceLock::new();
 
@@ -46,8 +45,8 @@ pub(crate) fn prepare_hook() -> Option<PrepareHook> {
     PREPARE_HOOK.get().copied()
 }
 
-pub(crate) fn new_event_loop() -> Result<winit::event_loop::EventLoop<()>, winit::error::EventLoopError>
-{
+pub(crate) fn new_event_loop()
+-> Result<winit::event_loop::EventLoop<()>, winit::error::EventLoopError> {
     let mut builder = winit::event_loop::EventLoop::builder();
     if let Some(hook) = EVENT_LOOP_HOOK.get() {
         hook(&mut builder);

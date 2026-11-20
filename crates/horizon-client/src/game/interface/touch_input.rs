@@ -42,6 +42,22 @@ pub(in crate::game) struct TouchInput {
 }
 
 impl Game<'_> {
+    /// Android's Back button is the Escape key: closes a screen, or opens the pause menu.
+    /// True when `event` was that button (pressed or released), which nothing else should see.
+    pub(in crate::game) fn android_back(&mut self, event: &WindowEvent) -> bool {
+        #[cfg(target_os = "android")]
+        if let WindowEvent::KeyboardInput { event: key, .. } = event
+            && key.logical_key == winit::keyboard::Key::Named(winit::keyboard::NamedKey::GoBack)
+        {
+            if key.state == ElementState::Pressed && !key.repeat {
+                let _ = self.key_pressed(KeyCode::Escape, KeyCode::Escape);
+            }
+            return true;
+        }
+        let _ = event;
+        false
+    }
+
     fn touch_in_world(&self) -> bool {
         self.screen == Screen::Playing && self.title.is_none() && !self.dialog_open()
     }

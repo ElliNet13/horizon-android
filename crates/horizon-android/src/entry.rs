@@ -33,6 +33,9 @@ fn android_main(app: AndroidApp) {
     }
 
     let _ = APP.set(app);
+    if let Some(app) = APP.get() {
+        crate::immersive::keep(app);
+    }
     horizon_client::entry::set_event_loop_hook(|builder| {
         if let Some(app) = APP.get() {
             builder.with_android_app(app.clone());

@@ -282,6 +282,8 @@ impl Game<'_> {
     /// scripted run, which plays the game while the person may be using the computer.
     pub(super) fn internal_grab(&self) -> bool {
         (self.options.offscreen && !self.split_window)
+            // A touch screen has no pointer to grab: looking is a drag on the screen's own.
+            || super::touch_input::touch_enabled()
             || self.unclaimed_window
             || self.scripted_run()
     }
