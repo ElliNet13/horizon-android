@@ -10,6 +10,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 const VERSION_MANIFEST: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+const PACKAGES: &str = "https://piston-meta.mojang.com/v1/packages";
 const OBJECTS: &str = "https://resources.download.minecraft.net";
 
 /// Where the files went.
@@ -48,10 +49,8 @@ fn sha1_hex(data: &[u8]) -> String {
         .collect()
 }
 
-/// Fetches `version`'s files into `work`. `progress` gets what it is doing and the fraction
-/// done (0 to 1).
-pub fn download(version: &str, work: &Path, progress: &dyn Fn(&str, f32)) -> Result<Files, String> {
-    progress("Minecraft's version list", 0.0);
+/// The version JSON Mojang's list names for `version`: its url, sha1 and text.
+fn listed(version: &str) -> Result<(String, String, String), String> {
     let list = pyjson::loads(&get_text(VERSION_MANIFEST)?)?;
     let entry = list
         .get("versions")
@@ -61,17 +60,38 @@ pub fn download(version: &str, work: &Path, progress: &dyn Fn(&str, f32)) -> Res
                 .find(|v| v.get("id").and_then(Value::as_str) == Some(version))
         })
         .ok_or_else(|| format!("Mojang's version list has no {version}"))?;
-    let manifest_url = text(entry, "url", "the version list entry")?;
-    let manifest_sha1 = text(entry, "sha1", "the version list entry")?;
+    let url = text(entry, "url", "the version list entry")?.to_owned();
+    let sha1 = text(entry, "sha1", "the version list entry")?.to_owned();
+    let body = get_text(&url)?;
+    Ok((url, sha1, body))
+}
 
+/// Fetches `version`'s files into `work`. `progress` gets what it is doing and the fraction
+/// done (0 to 1).
+pub fn download(
+    version: &str,
+    pinned_sha1: Option<&str>,
+    work: &Path,
+    progress: &dyn Fn(&str, f32),
+) -> Result<Files, String> {
+    // The version JSON Horizon's lock pins, by its hash: Mojang's list names its newest one, which
+    // may be a republished file the preparer does not know. The list is the fallback.
+    progress("Minecraft's version file", 0.0);
+    let pinned = pinned_sha1
+        .filter(|sha| sha.len() == 40 && sha.bytes().all(|b| b.is_ascii_hexdigit()))
+        .map(|sha| (format!("{PACKAGES}/{sha}/{version}.json"), sha.to_owned()));
+    let (manifest_url, manifest_sha1, manifest_text) = match pinned {
+        Some((url, sha)) => match get_text(&url) {
+            Ok(body) => (url, sha, body),
+            Err(_) => listed(version)?,
+        },
+        None => listed(version)?,
+    };
+    if sha1_hex(manifest_text.as_bytes()) != manifest_sha1 {
+        return Err(format!("{manifest_url}: checksum does not match"));
+    }
     let minecraft = work.join("minecraft");
     let manifest_path = minecraft.join(format!("versions/{version}/{version}.json"));
-    let manifest_text = get_text(manifest_url)?;
-    if sha1_hex(manifest_text.as_bytes()) != manifest_sha1 {
-        return Err(format!(
-            "{manifest_url}: checksum does not match Mojang's list"
-        ));
-    }
     std::fs::create_dir_all(manifest_path.parent().ok_or("no folder")?)
         .map_err(|e| e.to_string())?;
     std::fs::write(&manifest_path, &manifest_text).map_err(|e| e.to_string())?;

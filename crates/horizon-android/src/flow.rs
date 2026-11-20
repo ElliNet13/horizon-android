@@ -108,9 +108,15 @@ pub fn run(
     let lock = horizon_prepare::artifacts::Lock::read(&root)?;
 
     // Minecraft's files.
-    let files = mojang::download(&lock.version, &work.join("mojang"), &|text, f| {
-        progress(&format!("downloading Minecraft {text}"), within(FILES, f))
-    })?;
+    let files = mojang::download(
+        &lock.version,
+        lock.json
+            .get("minecraft")
+            .and_then(|m| m.get("manifest_sha1"))
+            .and_then(|v| v.as_str()),
+        &work.join("mojang"),
+        &|text, f| progress(&format!("downloading Minecraft {text}"), within(FILES, f)),
+    )?;
 
     // The preparer, with Java started through the loader.
     let output = work.join("out");
