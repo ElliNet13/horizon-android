@@ -15,6 +15,8 @@ mod clipboard;
 #[cfg(target_os = "android")]
 mod entry;
 #[cfg(target_os = "android")]
+mod immersive;
+#[cfg(target_os = "android")]
 mod on_device;
 #[cfg(target_os = "android")]
 mod preload;

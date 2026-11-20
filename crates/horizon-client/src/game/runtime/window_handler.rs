@@ -438,6 +438,9 @@ impl ApplicationHandler for Game<'_> {
         self.previous = Instant::now();
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        if self.android_back(&event) {
+            return;
+        }
         let key = if self.window.as_ref().is_some_and(|w| w.id() == id)
             && !self.scripted_run()
             && !self.unclaimed_window
