@@ -93,7 +93,7 @@ impl Loading {
     /// Android destroys the window's surface when the app goes to the background.
     pub(super) fn suspended(&mut self) {
         if let Some(renderer) = &mut self.renderer {
-            renderer.release_surface();
+            renderer.lose_surface();
         }
     }
     pub(super) fn resumed(&mut self, event_loop: &ActiveEventLoop) {
