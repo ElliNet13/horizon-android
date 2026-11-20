@@ -36,6 +36,21 @@ fn android_main(app: AndroidApp) {
             std::env::set_var("HORIZON_NO_AUDIO", "1");
         }
         log::info!("game folder {}", dir.display());
+        // Settings for trying things without a rebuild: `horizon-env.txt` in the game folder,
+        // one NAME=VALUE per line (# starts a comment), e.g. HORIZON_PACKED_QUADS=0.
+        if let Ok(text) = std::fs::read_to_string(dir.join("horizon-env.txt")) {
+            for line in text.lines() {
+                let line = line.trim();
+                if let Some((name, value)) = line.split_once('=')
+                    && !line.starts_with('#')
+                    && !name.trim().is_empty()
+                {
+                    log::info!("horizon-env.txt: {}={}", name.trim(), value.trim());
+                    // SAFETY: as above.
+                    unsafe { std::env::set_var(name.trim(), value.trim()) };
+                }
+            }
+        }
     }
 
     let _ = APP.set(app);
