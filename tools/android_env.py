@@ -79,6 +79,11 @@ TESTS: list[list[str]] = [
     ["HORIZON_PACKED_QUADS=0", "HORIZON_GPU_CULL=0"],
     ["HORIZON_PACKED_QUADS=0", "HORIZON_FLAT_DRAWS=1"],
     ["HORIZON_PACKED_QUADS=0", "HORIZON_GPU_CULL=0", "HORIZON_FLAT_DRAWS=0", "HORIZON_SUBMIT_THREAD=0"],
+    # The driver itself: OpenGL ES instead of Vulkan.
+    ["HORIZON_GRAPHICS_API=opengl"],
+    # Block textures in smaller arrays, and without HDR output.
+    ["HORIZON_SPRITE_SPLIT=512"],
+    ["HORIZON_HDR_OUTPUT=scrgb"],
 ]
 
 
