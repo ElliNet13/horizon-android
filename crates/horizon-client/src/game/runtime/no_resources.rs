@@ -39,6 +39,8 @@ struct Missing {
     preparing: bool,
     /// Where the prepared files go.
     root: std::path::PathBuf,
+    /// The app is in the background: its surface is gone, so nothing is drawn.
+    suspended: bool,
 }
 
 /// Shows the screen until the player closes it.
@@ -66,6 +68,7 @@ pub(super) fn show(looked_in: &std::path::Path, settings: &Settings) -> Result<(
         import: None,
         preparing: false,
         root: looked_in.to_path_buf(),
+        suspended: false,
     };
     if crate::entry::prepare_hook().is_some() {
         app.screen.offer_prepare();
@@ -107,6 +110,9 @@ impl Missing {
     }
 
     fn draw(&mut self) {
+        if self.suspended {
+            return;
+        }
         let mut batch = HudBatch::new(self.size(), self.settings.gui_scale_inputs());
         self.with_ui(&mut batch, |ui| self.screen.draw(ui));
         let Some(renderer) = &mut self.renderer else {
@@ -238,12 +244,14 @@ impl Missing {
 impl ApplicationHandler for Missing {
     /// Android destroys the window's surface when the app goes to the background.
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        self.suspended = true;
         if let Some(renderer) = &mut self.renderer {
-            renderer.release_surface();
+            renderer.lose_surface();
         }
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        self.suspended = false;
         if let Some(window) = &self.window {
             // Back from the background: the window's new surface.
             if let Some(renderer) = &mut self.renderer {
@@ -332,7 +340,7 @@ impl ApplicationHandler for Missing {
             event_loop.exit();
             return;
         }
-        if self.show_import() {
+        if self.show_import() && !self.suspended {
             if let Some(window) = &self.window {
                 window.request_redraw();
             }

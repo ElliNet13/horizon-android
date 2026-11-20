@@ -37,6 +37,9 @@ pub struct NoResources {
     status: Option<String>,
     /// A bar under the status, 0 to 1.
     progress: Option<f32>,
+    /// Space is kept for the status and the bar from the start, so the screen does not move or
+    /// change size when they appear.
+    status_room: bool,
 }
 
 impl NoResources {
@@ -73,11 +76,13 @@ impl NoResources {
             looked_in: lang::tr("horizon.no_resources.looked_in", &[&shown.display()]),
             status: None,
             progress: None,
+            status_room: false,
         }
     }
 
     /// Adds the Import button and says where the zip goes (`zip` is shown to the player).
     pub fn offer_import(&mut self, zip: &std::path::Path) {
+        self.status_room = true;
         let shown = std::path::absolute(zip).unwrap_or_else(|_| zip.to_path_buf());
         self.paragraphs.push(lang::tr(
             "horizon.no_resources.import_about",
@@ -91,6 +96,7 @@ impl NoResources {
 
     /// Adds the button for the platform's own preparing (`entry::set_prepare_hook`).
     pub fn offer_prepare(&mut self) {
+        self.status_room = true;
         self.paragraphs
             .push(lang::get("horizon.no_resources.prepare_about"));
         self.buttons.insert(
@@ -113,32 +119,44 @@ impl NoResources {
     }
 
     /// How much larger than the design size the screen can be drawn and still fit the window
-    /// (1 to 1.8): a phone held at arm's length wants bigger text and buttons.
+    /// (1 to 1.5): a phone held at arm's length wants bigger text and buttons.
     pub fn fit_zoom(&self, ui: &Ui) -> f32 {
-        (ui.h * SAFE_FRACTION / self.layout(ui).height).clamp(1.0, 1.8)
+        (ui.h * SAFE_FRACTION / self.layout(ui).height).clamp(1.0, 1.5)
     }
 
     /// The buttons' labels, actions and rectangles in dp, and the paragraphs' wrapped
     /// lines: one layout for drawing and clicks.
     fn layout(&self, ui: &Ui) -> Layout {
-        let width = COLUMN.min(ui.w - 2.0 * SIDE_MARGIN).max(160.0);
+        let side = SIDE_MARGIN.max(ui.w * 0.08);
+        let edge = EDGE_MARGIN.max(ui.h * 0.07);
+        let width = COLUMN.min(ui.w - 2.0 * side).max(160.0);
         let x = ((ui.w - width) / 2.0).round();
         let lines: Vec<Vec<String>> = self
             .paragraphs
             .iter()
-            .chain(self.status.iter())
             .map(|p| wrap(ui, Face::Regular, body(), p, width))
+            .collect();
+        let status: Vec<String> = self
+            .status
+            .iter()
+            .flat_map(|p| wrap(ui, Face::Regular, body(), p, width))
             .collect();
         let text_h = lines.iter().map(|l| l.len() as f32 * LINE).sum::<f32>()
             + (lines.len() - 1) as f32 * PARAGRAPH_GAP;
-        let bar_h = if self.progress.is_some() {
-            BAR_GAP + BAR
+        // The status and the bar have their room even while they are empty.
+        let status_h = if self.status_room {
+            status.len().max(STATUS_LINES) as f32 * LINE
         } else {
             0.0
         };
-        let height = TITLE_LINE + 16.0 + text_h + bar_h + 28.0 + control() + 20.0 + SMALL_LINE;
-        let y = ((ui.h - height) / 2.0).max(EDGE_MARGIN).round();
-        let buttons_y = y + TITLE_LINE + 16.0 + text_h + bar_h + 28.0;
+        let below_h = if self.status_room {
+            PARAGRAPH_GAP + status_h + BAR_GAP + BAR
+        } else {
+            0.0
+        };
+        let height = TITLE_LINE + 16.0 + text_h + below_h + 28.0 + control() + 20.0 + SMALL_LINE;
+        let y = ((ui.h - height) / 2.0).max(edge).round();
+        let buttons_y = y + TITLE_LINE + 16.0 + text_h + below_h + 28.0;
         let mut buttons = Vec::new();
         let mut bx = x;
         for (label, action) in &self.buttons {
@@ -158,6 +176,8 @@ impl NoResources {
             width,
             height,
             lines,
+            status,
+            status_h,
             buttons,
         }
     }
@@ -191,8 +211,21 @@ impl NoResources {
             }
             y += PARAGRAPH_GAP;
         }
+        for line in &layout.status {
+            ui.text_line(
+                Face::Regular,
+                body(),
+                LINE,
+                layout.x,
+                y,
+                color::text(),
+                line,
+            );
+            y += LINE;
+        }
         if let Some(fraction) = self.progress {
-            let top = y - PARAGRAPH_GAP + BAR_GAP;
+            // `y` is after the status lines; the bar sits below the room kept for them.
+            let top = y - layout.status.len() as f32 * LINE + layout.status_h + BAR_GAP;
             ui.rounded(layout.x, top, layout.width, BAR, BAR / 2.0, color::raised());
             let filled = (layout.width * fraction).max(BAR).min(layout.width);
             ui.rounded(layout.x, top, filled, BAR, BAR / 2.0, color::accent());
@@ -275,7 +308,9 @@ const SMALL_LINE: f32 = 18.0;
 /// and edge display cut into the picture. The screen is sized to fill this fraction of the height.
 const SIDE_MARGIN: f32 = 48.0;
 const EDGE_MARGIN: f32 = 40.0;
-const SAFE_FRACTION: f32 = 0.74;
+const SAFE_FRACTION: f32 = 0.66;
+/// Lines of status kept clear.
+const STATUS_LINES: usize = 3;
 const BAR: f32 = 10.0;
 const BAR_GAP: f32 = 10.0;
 fn control() -> f32 {
@@ -288,6 +323,9 @@ struct Layout {
     width: f32,
     height: f32,
     lines: Vec<Vec<String>>,
+    /// The status's wrapped lines and the height kept for them.
+    status: Vec<String>,
+    status_h: f32,
     buttons: Vec<Button>,
 }
 

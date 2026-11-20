@@ -363,7 +363,7 @@ impl ApplicationHandler for Game<'_> {
     /// Android destroys the window's surface when the app goes to the background.
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(renderer) = &mut self.renderer {
-            renderer.release_surface();
+            renderer.lose_surface();
         }
     }
 
