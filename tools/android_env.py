@@ -50,6 +50,13 @@ def write_settings(serial: str | None, settings: list[str]) -> None:
         adb(serial, "push", str(local), ENV_FILE)
 
 
+def save_log(serial: str | None, name: str) -> Path:
+    """The whole log (nothing hidden) in a file in the current folder, to attach to a report."""
+    path = Path(f"android-log-{name}.txt")
+    path.write_text(adb(serial, "logcat", "-d", "-s", *LOG_TAGS), encoding="utf-8")
+    return path
+
+
 def show_log(serial: str | None, seconds: float, everything: bool) -> None:
     print(f"--- log after {seconds:.0f} s ---")
     output = adb(serial, "logcat", "-d", "-s", *LOG_TAGS)
@@ -121,7 +128,7 @@ def cycle(serial: str | None, first: int) -> None:
         label = ", ".join(settings) if settings else "no settings (baseline)"
         print(f"\n[{position + 1}/{len(TESTS)}] {label}")
         while True:
-            print("  space = next test   b = back   r = restart this   l = log   q = quit", end="\r", flush=True)
+            print("  space = next test   b = back   r = restart this   l = save + show log   q = quit", end="\r", flush=True)
             key = read_key()
             if key in (" ", "\r", "\n"):
                 if position + 1 >= len(TESTS):
@@ -137,6 +144,7 @@ def cycle(serial: str | None, first: int) -> None:
             if key in ("l", "L"):
                 print()
                 show_log(serial, 0, False)
+                print(f"whole log saved to {save_log(serial, str(position + 1))}")
             if key in ("q", "Q", "\x03"):
                 print()
                 return
