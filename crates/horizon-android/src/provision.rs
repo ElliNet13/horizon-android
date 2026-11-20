@@ -262,8 +262,16 @@ pub fn install_java(
     // The bar follows the bytes: a download is most of the time, unpacking the rest of it.
     let all_bytes: u64 = packages.iter().map(|p| p.size.max(1)).sum();
     let mut done_bytes = 0u64;
+    // A package unpacked on an earlier try (the app was closed or killed) is not fetched again.
+    let installed = prefix.join(".installed");
+    fs::create_dir_all(&installed).map_err(|e| e.to_string())?;
     for (i, package) in packages.iter().enumerate() {
         let label = format!("{}/{} {}", i + 1, total, package.name);
+        let marker = installed.join(&package.name);
+        if marker.exists() {
+            done_bytes += package.size.max(1);
+            continue;
+        }
         let deb = work.join(format!("{}.deb", package.name));
         let mut got = 0u64;
         let mut last_report = 0u64;
@@ -287,9 +295,11 @@ pub fn install_java(
         );
         extract_deb(&deb, prefix)?;
         let _ = fs::remove_file(&deb);
+        fs::write(&marker, &package.sha256).map_err(|e| e.to_string())?;
         done_bytes += package.size.max(1);
     }
     let _ = fs::remove_dir_all(&work);
+    let _ = fs::remove_dir_all(&installed);
     java_home(prefix).ok_or_else(|| "the Java package has no bin/java".to_owned())
 }
 

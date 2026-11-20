@@ -598,6 +598,10 @@ impl<'a> Split<'a> {
 }
 
 impl ApplicationHandler for Split<'_> {
+    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+        self.host.suspended(event_loop);
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.host.resumed(event_loop);
         if !self.surfaces.is_empty() {

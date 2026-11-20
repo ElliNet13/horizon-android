@@ -236,8 +236,24 @@ impl Missing {
 }
 
 impl ApplicationHandler for Missing {
+    /// Android destroys the window's surface when the app goes to the background.
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(renderer) = &mut self.renderer {
+            renderer.release_surface();
+        }
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() {
+        if let Some(window) = &self.window {
+            // Back from the background: the window's new surface.
+            if let Some(renderer) = &mut self.renderer {
+                if let Err(e) = renderer.recreate_surface() {
+                    self.error = Some(e);
+                    event_loop.exit();
+                    return;
+                }
+            }
+            window.request_redraw();
             return;
         }
         let attributes =

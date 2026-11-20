@@ -90,8 +90,23 @@ impl Loading {
             || self.menu.pending.is_some()
             || self.ui_at.is_none_or(|at| at.elapsed() >= TITLE_FRAME_WAIT)
     }
+    /// Android destroys the window's surface when the app goes to the background.
+    pub(super) fn suspended(&mut self) {
+        if let Some(renderer) = &mut self.renderer {
+            renderer.release_surface();
+        }
+    }
     pub(super) fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() {
+        if let Some(window) = &self.window {
+            // Back from the background: the window's new surface.
+            if let Some(renderer) = &mut self.renderer
+                && let Err(e) = renderer.recreate_surface()
+            {
+                log::error!("Horizon: no surface after resuming: {e}");
+                event_loop.exit();
+                return;
+            }
+            window.request_redraw();
             return;
         }
         // The Window constructor: created fullscreen when options.txt or --fullscreen says so.
@@ -431,6 +446,12 @@ pub(super) enum App {
     Ready(Box<split::Split<'static>>),
 }
 impl ApplicationHandler for App {
+    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+        match self {
+            App::Loading(loading) => loading.suspended(),
+            App::Ready(game) => game.suspended(event_loop),
+        }
+    }
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         match self {
             App::Loading(loading) => loading.resumed(event_loop),
