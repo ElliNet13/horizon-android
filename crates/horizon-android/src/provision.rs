@@ -263,6 +263,9 @@ pub fn java_home(prefix: &Path) -> Option<PathBuf> {
         .find(|p| p.join("bin/java").exists())
 }
 
+/// Files fetched at the same time.
+const DOWNLOADS: usize = 6;
+
 /// Downloads and unpacks Java 25 and its dependencies into `prefix`, reporting each step.
 pub fn install_java(
     prefix: &Path,
@@ -276,45 +279,105 @@ pub fn install_java(
     let text = fs::read_to_string(&index_path).map_err(|e| e.to_string())?;
     let index = parse_index(&text);
     let packages = resolve(&index, JAVA_PACKAGE)?;
-    let total = packages.len();
     // The bar follows the bytes: a download is most of the time, unpacking the rest of it.
     let all_bytes: u64 = packages.iter().map(|p| p.size.max(1)).sum();
-    let mut done_bytes = 0u64;
     // A package unpacked on an earlier try (the app was closed or killed) is not fetched again.
     let installed = prefix.join(".installed");
     fs::create_dir_all(&installed).map_err(|e| e.to_string())?;
+    let mut done_bytes = 0u64;
+    let mut pending = Vec::new();
     for (i, package) in packages.iter().enumerate() {
-        let label = format!("{}/{} {}", i + 1, total, package.name);
-        let marker = installed.join(&package.name);
-        if marker.exists() {
+        if installed.join(&package.name).exists() {
             done_bytes += package.size.max(1);
-            continue;
+        } else {
+            pending.push(i);
         }
-        let deb = work.join(format!("{}.deb", package.name));
+    }
+    // Several downloads at once (like `nala`): a few connections fill the line a single one
+    // cannot. Bytes and finished files come back to this thread, which reports and unpacks.
+    enum Message {
+        Bytes(u64),
+        Finished(usize, Result<String, String>),
+    }
+    let queue = std::sync::Mutex::new(pending.clone());
+    let (send, receive) = std::sync::mpsc::channel::<Message>();
+    let workers = DOWNLOADS.min(pending.len());
+    let mut failure = None;
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            let (queue, send, packages, work) = (&queue, send.clone(), &packages, &work);
+            scope.spawn(move || {
+                loop {
+                    let Some(i) = queue.lock().ok().and_then(|mut q| q.pop()) else {
+                        break;
+                    };
+                    let package = &packages[i];
+                    let deb = work.join(format!("{}.deb", package.name));
+                    let mut pending_bytes = 0u64;
+                    let result = download(&format!("{REPO}/{}", package.filename), &deb, &mut |n| {
+                        pending_bytes += n;
+                        if pending_bytes >= 1 << 17 {
+                            let _ = send.send(Message::Bytes(pending_bytes));
+                            pending_bytes = 0;
+                        }
+                    });
+                    if pending_bytes > 0 {
+                        let _ = send.send(Message::Bytes(pending_bytes));
+                    }
+                    let failed = result.is_err();
+                    let _ = send.send(Message::Finished(i, result));
+                    if failed {
+                        break;
+                    }
+                }
+            });
+        }
+        drop(send);
         let mut got = 0u64;
-        let mut last_report = 0u64;
-        let hash = download(&format!("{REPO}/{}", package.filename), &deb, &mut |n| {
-            got += n;
-            if got - last_report >= 1 << 18 {
-                last_report = got;
-                let fraction = (done_bytes + got) as f32 / all_bytes as f32;
-                progress(&format!("downloading {label}"), Some(fraction * 0.95));
+        let mut finished = 0usize;
+        let mut abort = false;
+        for message in receive {
+            match message {
+                Message::Bytes(n) => {
+                    got += n;
+                    let fraction = (done_bytes + got) as f32 / all_bytes as f32;
+                    let label = format!("{}/{} downloading", finished + 1, pending.len());
+                    progress(&label, Some(fraction.min(1.0) * 0.95));
+                }
+                Message::Finished(i, result) => {
+                    if abort {
+                        continue;
+                    }
+                    let package = &packages[i];
+                    let deb = work.join(format!("{}.deb", package.name));
+                    let step = result.and_then(|hash| {
+                        if hash != package.sha256 {
+                            return Err(format!(
+                                "{}: checksum does not match the index",
+                                package.name
+                            ));
+                        }
+                        progress(&format!("unpacking {}", package.name), None);
+                        extract_deb(&deb, prefix)?;
+                        let _ = fs::remove_file(&deb);
+                        fs::write(installed.join(&package.name), &package.sha256)
+                            .map_err(|e| e.to_string())
+                    });
+                    finished += 1;
+                    if let Err(e) = step {
+                        failure = Some(e);
+                        abort = true;
+                        // Nothing more is taken from the queue.
+                        if let Ok(mut q) = queue.lock() {
+                            q.clear();
+                        }
+                    }
+                }
             }
-        })?;
-        if hash != package.sha256 {
-            return Err(format!(
-                "{}: checksum does not match the index",
-                package.name
-            ));
         }
-        progress(
-            &format!("unpacking {label}"),
-            Some(done_bytes as f32 / all_bytes as f32 * 0.95),
-        );
-        extract_deb(&deb, prefix)?;
-        let _ = fs::remove_file(&deb);
-        fs::write(&marker, &package.sha256).map_err(|e| e.to_string())?;
-        done_bytes += package.size.max(1);
+    });
+    if let Some(e) = failure {
+        return Err(e);
     }
     let _ = fs::remove_dir_all(&work);
     let _ = fs::remove_dir_all(&installed);
