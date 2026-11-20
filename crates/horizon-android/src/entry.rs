@@ -11,6 +11,12 @@ fn android_main(app: AndroidApp) {
             .with_tag("horizon"),
     );
     std::panic::set_hook(Box::new(|info| log::error!("panic: {info}")));
+    // Which build this is, and the thread stack it asked for (the first lines of a crash log).
+    log::info!(
+        "horizon-android {} (RUST_MIN_STACK={:?})",
+        env!("CARGO_PKG_VERSION"),
+        std::env::var("RUST_MIN_STACK").ok()
+    );
 
     // The game keeps its saves, options and prepared resources in the working directory, which
     // is read-only on Android: use the app's external folder (/sdcard/Android/data/<package>/files,
