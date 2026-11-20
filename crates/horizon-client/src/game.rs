@@ -1853,6 +1853,9 @@ struct Game<'a> {
     /// The last world frame reached the swap chain. A window the compositor
     /// stops showing gets no frames, and the event loop must not spin on it.
     frame_drawn: bool,
+    /// Android took the window's surface away (the app is in the background): no frames until
+    /// `resumed` makes a new one.
+    surface_gone: bool,
     /// The world list's icon in progress (`GameRenderer.tryTakeScreenshotIfNeeded`):
     /// `None` without a local world, or once the save has its icon.png.
     world_icon: Option<WorldIcon>,
@@ -7841,6 +7844,9 @@ impl Game<'_> {
         self.world.modified = modified;
     }
     fn render(&mut self) -> Result<bool> {
+        if self.surface_gone {
+            return Ok(false);
+        }
         if self.screenshot_sequence.is_some() {
             return self.render_sequence_frame();
         }
@@ -10943,6 +10949,7 @@ impl<'a> Game<'a> {
             pending_save: None,
             server_tick_deadline: None,
             frame_drawn: true,
+            surface_gone: false,
             world_icon: None,
             forced_hit: None,
             tick_hit: Default::default(),

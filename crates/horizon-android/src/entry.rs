@@ -9,7 +9,11 @@ fn android_main(app: AndroidApp) {
         android_logger::Config::default()
             .with_max_level(log::LevelFilter::Info)
             // The Adreno driver's validation notes repeat every frame: only wgpu_hal's errors.
-            .with_filter(android_logger::FilterBuilder::new().parse("info,wgpu_hal=error").build())
+            .with_filter(
+                android_logger::FilterBuilder::new()
+                    .parse("info,wgpu_hal=error")
+                    .build(),
+            )
             .with_tag("horizon"),
     );
     std::panic::set_hook(Box::new(|info| log::error!("panic: {info}")));
