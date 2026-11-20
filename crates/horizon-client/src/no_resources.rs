@@ -119,9 +119,9 @@ impl NoResources {
     }
 
     /// How much larger than the design size the screen can be drawn and still fit the window
-    /// (1 to 1.5): a phone held at arm's length wants bigger text and buttons.
+    /// (1 to 2): a phone held at arm's length wants bigger text and buttons.
     pub fn fit_zoom(&self, ui: &Ui) -> f32 {
-        (ui.h * SAFE_FRACTION / self.layout(ui).height).clamp(1.0, 1.5)
+        (ui.h * SAFE_FRACTION / self.layout(ui).height).clamp(1.0, 2.0)
     }
 
     /// The buttons' labels, actions and rectangles in dp, and the paragraphs' wrapped
@@ -308,7 +308,7 @@ const SMALL_LINE: f32 = 18.0;
 /// and edge display cut into the picture. The screen is sized to fill this fraction of the height.
 const SIDE_MARGIN: f32 = 48.0;
 const EDGE_MARGIN: f32 = 40.0;
-const SAFE_FRACTION: f32 = 0.66;
+const SAFE_FRACTION: f32 = 0.8;
 /// Lines of status kept clear.
 const STATUS_LINES: usize = 3;
 const BAR: f32 = 10.0;
