@@ -1,7 +1,7 @@
 use std::sync::OnceLock;
 use winit::platform::android::{EventLoopBuilderExtAndroid, activity::AndroidApp};
 
-static APP: OnceLock<AndroidApp> = OnceLock::new();
+pub(crate) static APP: OnceLock<AndroidApp> = OnceLock::new();
 
 #[unsafe(no_mangle)]
 fn android_main(app: AndroidApp) {

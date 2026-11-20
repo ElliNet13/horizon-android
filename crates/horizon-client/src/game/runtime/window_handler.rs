@@ -360,8 +360,24 @@ impl Game<'_> {
 }
 
 impl ApplicationHandler for Game<'_> {
+    /// Android destroys the window's surface when the app goes to the background.
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(renderer) = &mut self.renderer {
+            renderer.release_surface();
+        }
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() {
+        if let Some(window) = &self.window {
+            // Back from the background: the window's new surface.
+            if let Some(renderer) = &mut self.renderer
+                && let Err(e) = renderer.recreate_surface()
+            {
+                log::error!("Horizon: no surface after resuming: {e}");
+                event_loop.exit();
+                return;
+            }
+            window.request_redraw();
             return;
         }
         debug_keys::warm_debug_cpu();

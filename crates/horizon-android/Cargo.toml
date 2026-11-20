@@ -25,6 +25,7 @@ horizon-client = { path = "../horizon-client", default-features = false }
 winit = { version = "0.30.13", features = ["android-native-activity"] }
 log = "0.4"
 android_logger = "0.14"
+jni = "0.21"
 
 [lints]
 workspace = true
@@ -48,3 +49,6 @@ config_changes = "orientation|keyboardHidden|screenSize|screenLayout|uiMode|smal
 
 [[package.metadata.android.uses_permission]]
 name = "android.permission.INTERNET"
+
+[[package.metadata.android.uses_permission]]
+name = "android.permission.WAKE_LOCK"

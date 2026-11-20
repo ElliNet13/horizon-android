@@ -1795,6 +1795,7 @@ dependencies = [
  "android_logger",
  "horizon-client",
  "horizon-game",
+ "jni 0.21.1",
  "libc",
  "log",
  "sha2",
