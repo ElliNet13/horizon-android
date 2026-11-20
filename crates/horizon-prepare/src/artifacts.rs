@@ -939,6 +939,24 @@ fn client_library_artifacts(manifest: &Value) -> Result<Vec<(&str, &Value)>, Str
     Ok(artifacts)
 }
 
+/// The client libraries this machine needs, as (relative path, sha1, url): what a downloader has
+/// to fetch into a launcher-style `libraries` folder for `import` (Horizon for Android).
+pub fn client_library_downloads(manifest: &Value) -> Result<Vec<(String, String, String)>, String> {
+    let mut downloads = Vec::new();
+    for (name, artifact) in client_library_artifacts(manifest)? {
+        if runs_without(name) {
+            continue;
+        }
+        let (path, sha1) = artifact_fields(artifact)?;
+        let url = artifact
+            .get("url")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("Library {name} has no download url"))?;
+        downloads.push((path.to_string(), sha1.to_string(), url.to_string()));
+    }
+    Ok(downloads)
+}
+
 /// Netty's native transports (`io.netty:netty-transport-native-kqueue:4.2.16.Final:osx-aarch_64`,
 /// the epoll ones on Linux): the game uses one when it loads and Netty NIO otherwise
 /// (`EventLoopGroupHolder.remote` asks `KQueue.isAvailable()`, then `Epoll.isAvailable()`), and

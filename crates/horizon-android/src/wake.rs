@@ -34,7 +34,9 @@ pub fn acquire(app: &AndroidApp) -> Result<WakeLock, String> {
         )
         .and_then(|v| v.l())
         .map_err(|e| e.to_string())?;
-    let tag = env.new_string("horizon:prepare").map_err(|e| e.to_string())?;
+    let tag = env
+        .new_string("horizon:prepare")
+        .map_err(|e| e.to_string())?;
     let lock = env
         .call_method(
             &power,

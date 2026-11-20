@@ -345,13 +345,14 @@ pub fn install_java(
                     let package = &packages[i];
                     let deb = work.join(format!("{}.deb", package.name));
                     let mut pending_bytes = 0u64;
-                    let result = download(&format!("{REPO}/{}", package.filename), &deb, &mut |n| {
-                        pending_bytes += n;
-                        if pending_bytes >= 1 << 17 {
-                            let _ = send.send(Message::Bytes(pending_bytes));
-                            pending_bytes = 0;
-                        }
-                    });
+                    let result =
+                        download(&format!("{REPO}/{}", package.filename), &deb, &mut |n| {
+                            pending_bytes += n;
+                            if pending_bytes >= 1 << 17 {
+                                let _ = send.send(Message::Bytes(pending_bytes));
+                                pending_bytes = 0;
+                            }
+                        });
                     if pending_bytes > 0 {
                         let _ = send.send(Message::Bytes(pending_bytes));
                     }
@@ -372,7 +373,8 @@ pub fn install_java(
             match message {
                 Message::Bytes(n) => {
                     got += n;
-                    let fraction = (2 * done_bytes + got + unpacked) as f32 / (2 * all_bytes) as f32;
+                    let fraction =
+                        (2 * done_bytes + got + unpacked) as f32 / (2 * all_bytes) as f32;
                     let label = format!("{}/{} downloading", finished + 1, pending.len());
                     progress(&label, Some(fraction.min(1.0) * 0.95));
                 }
@@ -437,23 +439,46 @@ pub const LOADER: &str = "/system/bin/linker64";
 pub fn java_command(prefix: &Path, home: &Path, preload: Option<&Path>) -> std::process::Command {
     let mut command = std::process::Command::new(LOADER);
     command.arg(home.join("bin/java"));
+    for (key, value) in java_env(prefix, home, preload) {
+        command.env(key, value);
+    }
+    let _ = fs::create_dir_all(prefix.join("tmp"));
+    command
+}
+
+/// The environment Java and its tools run in (see [`java_command`]); also set for the whole
+/// process while the preparer starts them itself (`horizon-prepare`'s `HORIZON_JAVA_LOADER`).
+/// `HORIZON_EXEC_PREFIX` names the unpacked prefix as given and as the system resolves it
+/// (`/data/user/0` is `/data/data`), since either may be the path a program is started by.
+pub fn java_env(
+    prefix: &Path,
+    home: &Path,
+    preload: Option<&Path>,
+) -> Vec<(&'static str, std::ffi::OsString)> {
     let libs = format!(
         "{}:{}:{}",
         prefix.join("lib").display(),
         home.join("lib").display(),
         home.join("lib/server").display()
     );
-    command
-        .env("LD_LIBRARY_PATH", libs)
-        .env("JAVA_HOME", home)
-        .env("TMPDIR", prefix.join("tmp"))
-        .env("HORIZON_PROC_SELF_EXE", home.join("bin/java"))
-        .env("HORIZON_EXEC_PREFIX", prefix);
-    if let Some(preload) = preload {
-        command.env("LD_PRELOAD", preload);
+    let mut prefixes = prefix.display().to_string();
+    if let Ok(real) = fs::canonicalize(prefix) {
+        if real != prefix {
+            prefixes = format!("{prefixes}:{}", real.display());
+        }
     }
-    let _ = fs::create_dir_all(prefix.join("tmp"));
-    command
+    let mut env: Vec<(&'static str, std::ffi::OsString)> = vec![
+        ("LD_LIBRARY_PATH", libs.into()),
+        ("JAVA_HOME", home.into()),
+        ("TMPDIR", prefix.join("tmp").into()),
+        ("HORIZON_PROC_SELF_EXE", home.join("bin/java").into()),
+        ("HORIZON_EXEC_PREFIX", prefixes.into()),
+        ("HORIZON_JAVA_LOADER", LOADER.into()),
+    ];
+    if let Some(preload) = preload {
+        env.push(("LD_PRELOAD", preload.into()));
+    }
+    env
 }
 
 #[cfg(test)]

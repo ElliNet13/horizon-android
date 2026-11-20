@@ -40,11 +40,8 @@ pub unsafe extern "C" fn execve(
     envp: *const *const libc::c_char,
 ) -> libc::c_int {
     unsafe {
-        let prefix = libc::getenv(c"HORIZON_EXEC_PREFIX".as_ptr());
-        if !prefix.is_null()
-            && !path.is_null()
-            && libc::strncmp(path, prefix, libc::strlen(prefix)) == 0
-        {
+        let prefixes = libc::getenv(c"HORIZON_EXEC_PREFIX".as_ptr());
+        if !prefixes.is_null() && !path.is_null() && under_prefix(path, prefixes) {
             let loader = c"/system/bin/linker64";
             let mut args: Vec<*const libc::c_char> = vec![loader.as_ptr(), path];
             if !argv.is_null() {
@@ -60,6 +57,30 @@ pub unsafe extern "C" fn execve(
                 as libc::c_int;
         }
         libc::syscall(libc::SYS_execve, path, argv, envp) as libc::c_int
+    }
+}
+
+/// Whether `path` starts with one of the `:`-separated folders in `prefixes`.
+///
+/// # Safety
+/// Both are valid C strings.
+unsafe fn under_prefix(path: *const libc::c_char, prefixes: *const libc::c_char) -> bool {
+    unsafe {
+        let mut start = prefixes;
+        loop {
+            let mut end = start;
+            while *end != 0 && *end != b':' as libc::c_char {
+                end = end.add(1);
+            }
+            let len = end.offset_from(start) as usize;
+            if len > 0 && libc::strncmp(path, start, len) == 0 {
+                return true;
+            }
+            if *end == 0 {
+                return false;
+            }
+            start = end.add(1);
+        }
     }
 }
 
