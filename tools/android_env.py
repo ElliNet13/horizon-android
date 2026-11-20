@@ -6,6 +6,7 @@ folder, start the app again, and (optionally) show the log and take a screenshot
     python tools/android_env.py HORIZON_GPU_CULL=0 HORIZON_FLAT_DRAWS=1 --wait 40 --shot out.png
     python tools/android_env.py --clear          # no settings
     python tools/android_env.py --show           # what the file holds now
+    python tools/android_env.py --cycle          # step through the renderer tests with Space
 
 Needs `adb` on the PATH and one device (or pass --serial). Settings are NAME=VALUE; the app reads
 them once at startup and logs each as `horizon-env.txt: NAME=VALUE`.
@@ -67,6 +68,75 @@ def screenshot(serial: str | None, path: Path) -> None:
     print(f"screenshot saved to {path}")
 
 
+# The renderer experiments --cycle steps through, each a list of NAME=VALUE.
+TESTS: list[list[str]] = [
+    [],
+    ["HORIZON_PACKED_QUADS=0"],
+    ["HORIZON_GPU_CULL=0"],
+    ["HORIZON_FLAT_DRAWS=0"],
+    ["HORIZON_FLAT_DRAWS=1"],
+    ["HORIZON_SUBMIT_THREAD=0"],
+    ["HORIZON_PACKED_QUADS=0", "HORIZON_GPU_CULL=0"],
+    ["HORIZON_PACKED_QUADS=0", "HORIZON_FLAT_DRAWS=1"],
+    ["HORIZON_PACKED_QUADS=0", "HORIZON_GPU_CULL=0", "HORIZON_FLAT_DRAWS=0", "HORIZON_SUBMIT_THREAD=0"],
+]
+
+
+def read_key() -> str:
+    """One key press, without Enter."""
+    if sys.platform == "win32":
+        import msvcrt
+
+        return msvcrt.getwch()
+    import termios
+    import tty
+
+    fd = sys.stdin.fileno()
+    saved = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        return sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+
+
+def start(serial: str | None, settings: list[str]) -> None:
+    adb(serial, "shell", "am", "force-stop", PACKAGE)
+    write_settings(serial, settings)
+    adb(serial, "logcat", "-c")
+    adb(serial, "shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
+
+
+def cycle(serial: str | None, first: int) -> None:
+    """Space (or Enter) runs the next test, b the one before, r the same again, q quits."""
+    position = first
+    while True:
+        settings = TESTS[position]
+        start(serial, settings)
+        label = ", ".join(settings) if settings else "no settings (baseline)"
+        print(f"\n[{position + 1}/{len(TESTS)}] {label}")
+        while True:
+            print("  space = next test   b = back   r = restart this   l = log   q = quit", end="\r", flush=True)
+            key = read_key()
+            if key in (" ", "\r", "\n"):
+                if position + 1 >= len(TESTS):
+                    print("\nThat was the last test.")
+                    return
+                position += 1
+                break
+            if key in ("b", "B"):
+                position = max(position - 1, 0)
+                break
+            if key in ("r", "R"):
+                break
+            if key in ("l", "L"):
+                print()
+                show_log(serial, 0, False)
+            if key in ("q", "Q", "\x03"):
+                print()
+                return
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("settings", nargs="*", help="NAME=VALUE, any number")
@@ -76,11 +146,16 @@ def main() -> None:
                         help="after starting, wait this long, then print the log")
     parser.add_argument("--shot", type=Path, metavar="PNG", help="with --wait: save a screenshot after it")
     parser.add_argument("--all-log", action="store_true", help="do not hide the wgpu_hal noise")
+    parser.add_argument("--cycle", nargs="?", const=1, type=int, metavar="FIRST",
+                        help="step through the renderer tests with Space (start at test FIRST, default 1)")
     parser.add_argument("--serial", help="the device, when several are connected")
     args = parser.parse_args()
 
     if shutil.which("adb") is None:
         sys.exit("adb is not on the PATH")
+    if args.cycle is not None:
+        cycle(args.serial, min(max(args.cycle, 1), len(TESTS)) - 1)
+        return
     if args.show:
         print(adb(args.serial, "shell", "cat", ENV_FILE, check=False) or "(no settings file)")
         return
