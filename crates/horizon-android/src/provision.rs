@@ -129,6 +129,30 @@ fn download(url: &str, to: &Path, on_bytes: &mut dyn FnMut(u64)) -> Result<Strin
 
 /// Unpacks a Termux `.deb` into `dest`, which takes the place of the package's install prefix.
 pub fn extract_deb(deb: &Path, dest: &Path) -> Result<(), String> {
+    extract_deb_reporting(deb, dest, &mut |_| {})
+}
+
+/// A reader that tells how many bytes pass through it.
+struct Counting<R> {
+    inner: R,
+    count: std::sync::Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl<R: Read> Read for Counting<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.count
+            .fetch_add(n as u64, std::sync::atomic::Ordering::Relaxed);
+        Ok(n)
+    }
+}
+
+/// [`extract_deb`], reporting (as a running total) the bytes of the `.deb` consumed so far.
+pub fn extract_deb_reporting(
+    deb: &Path,
+    dest: &Path,
+    on_bytes: &mut dyn FnMut(u64),
+) -> Result<(), String> {
     let mut file = fs::File::open(deb).map_err(|e| e.to_string())?;
     let mut magic = [0u8; 8];
     file.read_exact(&mut magic).map_err(|e| e.to_string())?;
@@ -159,9 +183,15 @@ pub fn extract_deb(deb: &Path, dest: &Path) -> Result<(), String> {
         }
         let decoder = xz4rust::XzDecoder::in_heap_with_alloc_dict_size(1 << 20, 1 << 27);
         let buffer = std::num::NonZeroUsize::new(1 << 16).expect("non-zero");
-        let reader =
-            xz4rust::XzReader::new_with_buffer_size_and_decoder(file.take(size), buffer, decoder);
-        return untar(reader, dest);
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let counted = Counting {
+            inner: file.take(size),
+            count: count.clone(),
+        };
+        let reader = xz4rust::XzReader::new_with_buffer_size_and_decoder(counted, buffer, decoder);
+        return untar(reader, dest, &mut || {
+            on_bytes(count.load(std::sync::atomic::Ordering::Relaxed))
+        });
     }
 }
 
@@ -181,12 +211,13 @@ fn inside(entry: &Path) -> Option<PathBuf> {
     Some(rest)
 }
 
-fn untar(reader: impl Read, dest: &Path) -> Result<(), String> {
+fn untar(reader: impl Read, dest: &Path, tick: &mut dyn FnMut()) -> Result<(), String> {
     use std::os::unix::fs::{PermissionsExt, symlink};
     let absolute = fs::canonicalize(dest).unwrap_or_else(|_| dest.to_path_buf());
     let mut archive = tar::Archive::new(reader);
     for entry in archive.entries().map_err(|e| e.to_string())? {
         let mut entry = entry.map_err(|e| e.to_string())?;
+        tick();
         let path = entry.path().map_err(|e| e.to_string())?.into_owned();
         let Some(rel) = inside(&path) else {
             continue;
@@ -334,13 +365,14 @@ pub fn install_java(
         }
         drop(send);
         let mut got = 0u64;
+        let mut unpacked = 0u64;
         let mut finished = 0usize;
         let mut abort = false;
         for message in receive {
             match message {
                 Message::Bytes(n) => {
                     got += n;
-                    let fraction = (done_bytes + got) as f32 / all_bytes as f32;
+                    let fraction = (2 * done_bytes + got + unpacked) as f32 / (2 * all_bytes) as f32;
                     let label = format!("{}/{} downloading", finished + 1, pending.len());
                     progress(&label, Some(fraction.min(1.0) * 0.95));
                 }
@@ -357,8 +389,19 @@ pub fn install_java(
                                 package.name
                             ));
                         }
-                        progress(&format!("unpacking {}", package.name), None);
-                        extract_deb(&deb, prefix)?;
+                        let name = format!("unpacking {}", package.name);
+                        let mut read = 0u64;
+                        let mut last = 0u64;
+                        extract_deb_reporting(&deb, prefix, &mut |n| {
+                            read = n;
+                            if read - last >= 1 << 16 {
+                                last = read;
+                                let total = (2 * done_bytes + got + unpacked + read) as f32
+                                    / (2 * all_bytes) as f32;
+                                progress(&name, Some(total.min(1.0) * 0.95));
+                            }
+                        })?;
+                        unpacked += package.size.max(1);
                         let _ = fs::remove_file(&deb);
                         fs::write(installed.join(&package.name), &package.sha256)
                             .map_err(|e| e.to_string())
