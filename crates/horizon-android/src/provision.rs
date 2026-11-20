@@ -74,7 +74,10 @@ fn bare_name(dependency: &str) -> &str {
 
 /// `root` and everything it depends on, dependencies first. A name no package carries is skipped
 /// (Android's own libraries, such as libc, are not in the repository).
-pub fn resolve<'a>(index: &'a HashMap<String, Package>, root: &str) -> Result<Vec<&'a Package>, String> {
+pub fn resolve<'a>(
+    index: &'a HashMap<String, Package>,
+    root: &str,
+) -> Result<Vec<&'a Package>, String> {
     let provided: HashMap<&str, &Package> = index
         .values()
         .flat_map(|p| p.provides.iter().map(move |name| (name.as_str(), p)))
@@ -105,7 +108,7 @@ pub fn resolve<'a>(index: &'a HashMap<String, Package>, root: &str) -> Result<Ve
 }
 
 /// Streams `url` to `to`, returning its SHA-256.
-fn download(url: &str, to: &Path) -> Result<String, String> {
+fn download(url: &str, to: &Path, on_bytes: &mut dyn FnMut(u64)) -> Result<String, String> {
     let response = ureq::get(url).call().map_err(|e| format!("{url}: {e}"))?;
     let mut body = response.into_reader();
     let mut file = fs::File::create(to).map_err(|e| format!("{}: {e}", to.display()))?;
@@ -117,6 +120,7 @@ fn download(url: &str, to: &Path) -> Result<String, String> {
             break;
         }
         hash.update(&buffer[..n]);
+        on_bytes(n as u64);
         file.write_all(&buffer[..n])
             .map_err(|e| format!("{}: {e}", to.display()))?;
     }
@@ -238,25 +242,48 @@ pub fn java_home(prefix: &Path) -> Option<PathBuf> {
 }
 
 /// Downloads and unpacks Java 25 and its dependencies into `prefix`, reporting each step.
-pub fn install_java(prefix: &Path, progress: &dyn Fn(&str)) -> Result<PathBuf, String> {
+pub fn install_java(
+    prefix: &Path,
+    progress: &dyn Fn(&str, Option<f32>),
+) -> Result<PathBuf, String> {
     let work = prefix.join(".downloads");
     fs::create_dir_all(&work).map_err(|e| e.to_string())?;
-    progress("the package index");
+    progress("the package index", None);
     let index_path = work.join("Packages");
-    download(&format!("{REPO}/{INDEX}"), &index_path)?;
+    download(&format!("{REPO}/{INDEX}"), &index_path, &mut |_| {})?;
     let text = fs::read_to_string(&index_path).map_err(|e| e.to_string())?;
     let index = parse_index(&text);
     let packages = resolve(&index, JAVA_PACKAGE)?;
     let total = packages.len();
+    // The bar follows the bytes: a download is most of the time, unpacking the rest of it.
+    let all_bytes: u64 = packages.iter().map(|p| p.size.max(1)).sum();
+    let mut done_bytes = 0u64;
     for (i, package) in packages.iter().enumerate() {
-        progress(&format!("{}/{} {}", i + 1, total, package.name));
+        let label = format!("{}/{} {}", i + 1, total, package.name);
         let deb = work.join(format!("{}.deb", package.name));
-        let hash = download(&format!("{REPO}/{}", package.filename), &deb)?;
+        let mut got = 0u64;
+        let mut last_report = 0u64;
+        let hash = download(&format!("{REPO}/{}", package.filename), &deb, &mut |n| {
+            got += n;
+            if got - last_report >= 1 << 18 {
+                last_report = got;
+                let fraction = (done_bytes + got) as f32 / all_bytes as f32;
+                progress(&format!("downloading {label}"), Some(fraction * 0.95));
+            }
+        })?;
         if hash != package.sha256 {
-            return Err(format!("{}: checksum does not match the index", package.name));
+            return Err(format!(
+                "{}: checksum does not match the index",
+                package.name
+            ));
         }
+        progress(
+            &format!("unpacking {label}"),
+            Some(done_bytes as f32 / all_bytes as f32 * 0.95),
+        );
         extract_deb(&deb, prefix)?;
         let _ = fs::remove_file(&deb);
+        done_bytes += package.size.max(1);
     }
     let _ = fs::remove_dir_all(&work);
     java_home(prefix).ok_or_else(|| "the Java package has no bin/java".to_owned())

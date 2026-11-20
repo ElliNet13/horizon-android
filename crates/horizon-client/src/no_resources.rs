@@ -35,6 +35,8 @@ pub struct NoResources {
     looked_in: String,
     /// What the import is doing or how it ended, below the paragraphs.
     status: Option<String>,
+    /// A bar under the status, 0 to 1.
+    progress: Option<f32>,
 }
 
 impl NoResources {
@@ -70,6 +72,7 @@ impl NoResources {
             buttons,
             looked_in: lang::tr("horizon.no_resources.looked_in", &[&shown.display()]),
             status: None,
+            progress: None,
         }
     }
 
@@ -104,6 +107,17 @@ impl NoResources {
         self.status = status;
     }
 
+    /// The bar under the status, as a fraction; `None` hides it.
+    pub fn set_progress(&mut self, progress: Option<f32>) {
+        self.progress = progress.map(|p| p.clamp(0.0, 1.0));
+    }
+
+    /// How much larger than the design size the screen can be drawn and still fit the window
+    /// (1 to 1.8): a phone held at arm's length wants bigger text and buttons.
+    pub fn fit_zoom(&self, ui: &Ui) -> f32 {
+        (ui.h * 0.9 / self.layout(ui).height).clamp(1.0, 1.8)
+    }
+
     /// The buttons' labels, actions and rectangles in dp, and the paragraphs' wrapped
     /// lines: one layout for drawing and clicks.
     fn layout(&self, ui: &Ui) -> Layout {
@@ -117,9 +131,14 @@ impl NoResources {
             .collect();
         let text_h = lines.iter().map(|l| l.len() as f32 * LINE).sum::<f32>()
             + (lines.len() - 1) as f32 * PARAGRAPH_GAP;
-        let height = TITLE_LINE + 16.0 + text_h + 28.0 + control() + 20.0 + SMALL_LINE;
+        let bar_h = if self.progress.is_some() {
+            BAR_GAP + BAR
+        } else {
+            0.0
+        };
+        let height = TITLE_LINE + 16.0 + text_h + bar_h + 28.0 + control() + 20.0 + SMALL_LINE;
         let y = ((ui.h - height) / 2.0).max(24.0).round();
-        let buttons_y = y + TITLE_LINE + 16.0 + text_h + 28.0;
+        let buttons_y = y + TITLE_LINE + 16.0 + text_h + bar_h + 28.0;
         let mut buttons = Vec::new();
         let mut bx = x;
         for (label, action) in &self.buttons {
@@ -137,6 +156,7 @@ impl NoResources {
             x,
             y,
             width,
+            height,
             lines,
             buttons,
         }
@@ -170,6 +190,12 @@ impl NoResources {
                 y += LINE;
             }
             y += PARAGRAPH_GAP;
+        }
+        if let Some(fraction) = self.progress {
+            let top = y - PARAGRAPH_GAP + BAR_GAP;
+            ui.rounded(layout.x, top, layout.width, BAR, BAR / 2.0, color::raised());
+            let filled = (layout.width * fraction).max(BAR).min(layout.width);
+            ui.rounded(layout.x, top, filled, BAR, BAR / 2.0, color::accent());
         }
         for button in &layout.buttons {
             let hovered = button.contains(ui.cursor);
@@ -244,6 +270,9 @@ fn button_text() -> f32 {
     ui_theme::sizes().ui
 }
 const SMALL_LINE: f32 = 18.0;
+/// The progress bar's thickness and its gap above, in dp.
+const BAR: f32 = 10.0;
+const BAR_GAP: f32 = 10.0;
 fn control() -> f32 {
     ui_theme::sizes().control_large
 }
@@ -252,6 +281,7 @@ struct Layout {
     x: f32,
     y: f32,
     width: f32,
+    height: f32,
     lines: Vec<Vec<String>>,
     buttons: Vec<Button>,
 }
