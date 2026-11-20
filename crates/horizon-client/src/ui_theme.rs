@@ -419,6 +419,14 @@ fn pack_layout(
 }
 impl<'a> Ui<'a> {
     /// `cursor` is in GUI pixels, like every screen's input.
+    /// Draws everything `factor` times larger: a screen made for a phone's hand-held distance.
+    pub fn zoom(&mut self, factor: f32) {
+        self.w /= factor;
+        self.h /= factor;
+        self.cursor = (self.cursor.0 / factor, self.cursor.1 / factor);
+        self.density *= factor;
+    }
+
     pub fn new(atlas: &'a HudAtlas, batch: &'a mut HudBatch, cursor: (f32, f32)) -> Self {
         let scale = batch.scale;
         let (pw, ph) = (batch.width * scale, batch.height * scale);

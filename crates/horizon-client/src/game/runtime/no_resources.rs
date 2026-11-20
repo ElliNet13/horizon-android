@@ -10,7 +10,7 @@ use winit::event::{MouseButton, TouchPhase};
 
 /// Where an import of a prepared resources zip stands (`import_zip`, on its own thread).
 enum Import {
-    Running(String),
+    Running(String, Option<f32>),
     /// Finished; the platform's message, or none for an import.
     Done(Option<String>),
     Failed(String),
@@ -96,6 +96,11 @@ impl Missing {
             self.pointer.1 as f32 / batch.scale,
         );
         let mut ui = horizon_client::ui_theme::Ui::new(&self.gui.atlas, batch, cursor);
+        if import_offered() {
+            // On a phone: as large as fits.
+            let zoom = self.screen.fit_zoom(&ui);
+            ui.zoom(zoom);
+        }
         let result = f(&mut ui);
         ui.finish();
         result
@@ -135,7 +140,7 @@ impl Missing {
         if self
             .import
             .as_ref()
-            .is_some_and(|i| matches!(*i.lock().unwrap(), Import::Running(_)))
+            .is_some_and(|i| matches!(*i.lock().unwrap(), Import::Running(..)))
         {
             return;
         }
@@ -148,11 +153,13 @@ impl Missing {
             )));
             return;
         }
-        let state = Arc::new(Mutex::new(Import::Running(String::new())));
+        let state = Arc::new(Mutex::new(Import::Running(String::new(), None)));
         self.import = Some(state.clone());
         let root = self.root.clone();
         std::thread::spawn(move || {
-            let progress = |entry: &str| *state.lock().unwrap() = Import::Running(entry.to_owned());
+            let progress = |entry: &str, fraction: Option<f32>| {
+                *state.lock().unwrap() = Import::Running(entry.to_owned(), fraction)
+            };
             let end = match import_zip(&zip, &root, &progress) {
                 Ok(()) => Import::Done(None),
                 Err(error) => Import::Failed(error),
@@ -168,16 +175,18 @@ impl Missing {
         if self
             .import
             .as_ref()
-            .is_some_and(|i| matches!(*i.lock().unwrap(), Import::Running(_)))
+            .is_some_and(|i| matches!(*i.lock().unwrap(), Import::Running(..)))
         {
             return;
         }
-        let state = Arc::new(Mutex::new(Import::Running(String::new())));
+        let state = Arc::new(Mutex::new(Import::Running(String::new(), None)));
         self.import = Some(state.clone());
         self.preparing = true;
         let root = self.root.clone();
         std::thread::spawn(move || {
-            let progress = |text: &str| *state.lock().unwrap() = Import::Running(text.to_owned());
+            let progress = |text: &str, fraction: Option<f32>| {
+                *state.lock().unwrap() = Import::Running(text.to_owned(), fraction)
+            };
             let end = match hook(&root, &progress) {
                 Ok(message) => Import::Done(Some(message)),
                 Err(error) => Import::Failed(error),
@@ -192,30 +201,36 @@ impl Missing {
             return false;
         };
         let preparing = self.preparing;
-        let (text, running) = match &*state.lock().unwrap() {
-            Import::Running(entry) => {
+        let (text, running, fraction) = match &*state.lock().unwrap() {
+            Import::Running(entry, fraction) => {
                 let key = if preparing {
                     "horizon.no_resources.preparing"
                 } else {
                     "horizon.no_resources.importing"
                 };
-                (lang::tr(key, &[entry]), true)
+                let shown = match fraction {
+                    Some(f) => format!("{}%  {entry}", (f * 100.0).floor() as u32),
+                    None => entry.clone(),
+                };
+                (lang::tr(key, &[&shown]), true, *fraction)
             }
             Import::Done(Some(message)) => (
                 lang::tr("horizon.no_resources.prepare_done", &[message]),
                 false,
+                None,
             ),
-            Import::Done(None) => (lang::get("horizon.no_resources.import_done"), false),
+            Import::Done(None) => (lang::get("horizon.no_resources.import_done"), false, None),
             Import::Failed(error) => {
                 let key = if preparing {
                     "horizon.no_resources.prepare_failed"
                 } else {
                     "horizon.no_resources.import_failed"
                 };
-                (lang::tr(key, &[error]), false)
+                (lang::tr(key, &[error]), false, None)
             }
         };
         self.screen.set_status(Some(text));
+        self.screen.set_progress(fraction);
         running
     }
 }
@@ -319,7 +334,7 @@ impl ApplicationHandler for Missing {
 fn import_zip(
     zip: &std::path::Path,
     root: &std::path::Path,
-    progress: &dyn Fn(&str),
+    progress: &dyn Fn(&str, Option<f32>),
 ) -> std::result::Result<(), String> {
     let file = std::fs::File::open(zip).map_err(|e| e.to_string())?;
     let mut archive = ::zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
@@ -360,7 +375,10 @@ fn import_zip(
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        progress(&format!("{}/{} {}", i + 1, count, path.display()));
+        progress(
+            &format!("{}/{} {}", i + 1, count, path.display()),
+            Some((i + 1) as f32 / count as f32),
+        );
         let mut out = std::fs::File::create(&target).map_err(|e| e.to_string())?;
         std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
     }
