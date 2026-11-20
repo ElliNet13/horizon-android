@@ -33,3 +33,22 @@ pub fn own_path() -> Option<std::path::PathBuf> {
         .find(|p| p.ends_with("libhorizon_android.so"))
         .map(std::path::PathBuf::from)
 }
+
+/// Rust threads get this much stack. The activity's `android_main` thread is started by
+/// `std::thread::spawn` with the 2 MiB default, which an unoptimized (debug) build overflows in
+/// `loading_renderer` alone; the game cannot move to a bigger thread, since winit must poll the
+/// activity's own thread. `RUST_MIN_STACK` is read when the first thread is spawned, so it is
+/// set when this library loads, before the activity starts.
+const THREAD_STACK: &core::ffi::CStr = c"67108864";
+
+extern "C" fn raise_thread_stack() {
+    // Not overriding a value the player set (`setenv`'s last argument 0).
+    // SAFETY: both strings are NUL-terminated and live for the whole program.
+    unsafe {
+        libc::setenv(c"RUST_MIN_STACK".as_ptr(), THREAD_STACK.as_ptr(), 0);
+    }
+}
+
+#[used]
+#[unsafe(link_section = ".init_array")]
+static RAISE_THREAD_STACK: extern "C" fn() = raise_thread_stack;
