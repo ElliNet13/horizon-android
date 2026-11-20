@@ -31,7 +31,7 @@ const JVM_OPTION_VARS: [&str; 3] = ["JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_J
 /// Exporters and JDK probes write to pipes or log files: on Windows they open no terminal. They
 /// run with [`BATCH_OPTIONS`] alone, whatever options the player's environment sets for Java.
 pub(crate) fn command(program: impl AsRef<OsStr>) -> Command {
-    let mut command = Command::new(program);
+    let mut command = through_loader(program.as_ref()).unwrap_or_else(|| Command::new(program));
     for var in JVM_OPTION_VARS {
         command.env_remove(var);
     }
@@ -44,6 +44,27 @@ pub(crate) fn command(program: impl AsRef<OsStr>) -> Command {
         command
     };
     command
+}
+
+/// Android refuses to start a program from an app's storage, so Horizon for Android runs its
+/// downloaded Java through the system loader: `HORIZON_JAVA_LOADER` names the loader and
+/// `HORIZON_EXEC_PREFIX` the folders (separated by `:`) that Java was unpacked in. A program under
+/// one of them is run as `<loader> <program>`, and tells the preloaded library which program it
+/// is (`HORIZON_PROC_SELF_EXE`). Everywhere else both variables are unset and nothing changes.
+fn through_loader(program: &OsStr) -> Option<Command> {
+    let loader = std::env::var_os("HORIZON_JAVA_LOADER")?;
+    let prefixes = std::env::var_os("HORIZON_EXEC_PREFIX")?;
+    let path = Path::new(program);
+    let inside = prefixes
+        .to_string_lossy()
+        .split(':')
+        .any(|prefix| !prefix.is_empty() && path.starts_with(prefix));
+    if !inside {
+        return None;
+    }
+    let mut command = Command::new(loader);
+    command.arg(program).env("HORIZON_PROC_SELF_EXE", program);
+    Some(command)
 }
 
 fn executable(dir: &Path, name: &str) -> PathBuf {
