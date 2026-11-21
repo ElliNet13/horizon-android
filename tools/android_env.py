@@ -104,6 +104,10 @@ TESTS: list[list[str]] = [
     ["HORIZON_TERRAIN_DEBUG=1", "HORIZON_TERRAIN_VERTEX=1"],
     ["HORIZON_TERRAIN_DEBUG=1", "HORIZON_TERRAIN_VERTEX=2"],
     ["HORIZON_TERRAIN_DEBUG=1", "HORIZON_TERRAIN_VERTEX=3"],
+    # One draw call per section instead of indirect multi-draws: 22 plain, 23 with magenta
+    # terrain over the screen.
+    ["HORIZON_MULTI_DRAW=0"],
+    ["HORIZON_MULTI_DRAW=0", "HORIZON_TERRAIN_DEBUG=1", "HORIZON_TERRAIN_VERTEX=1"],
 ]
 
 
