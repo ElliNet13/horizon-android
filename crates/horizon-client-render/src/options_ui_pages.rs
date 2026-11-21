@@ -14,6 +14,22 @@ thread_local! {
         const { std::cell::Cell::new(None) };
 }
 
+/// A registered page's text field being typed in: where it is, and its text.
+pub(super) struct PageEdit {
+    page: usize,
+    row: usize,
+    input: ui::EditBox,
+}
+
+impl PageEdit {
+    /// Tells the page the text it has now.
+    fn send_edit(&self) {
+        if let Some(page) = registered().get(self.page) {
+            page.act(self.row, added::Act::Edit(self.input.edit.value.clone()));
+        }
+    }
+}
+
 /// The pages crates registered.
 fn registered() -> &'static [&'static dyn added::Page] {
     #[cfg(test)]
@@ -167,7 +183,7 @@ impl OptionsUi {
                 added::Row::Text { text, .. } => {
                     out.extend(wrap(&text, 64).into_iter().map(Row::Note))
                 }
-                added::Row::Space(_) | added::Row::Field { .. } => continue,
+                added::Row::Space(_) => continue,
                 added::Row::Button {
                     label,
                     active,
@@ -201,6 +217,16 @@ impl OptionsUi {
             added::Row::Toggle { label, on } => wide(generic(label, on_off(on))),
             added::Row::Cycle { label, value } => wide(generic(label, label_text(value))),
             added::Row::Slider { .. } => Row::Big(Opt::Page(page, r)),
+            // A field is a button showing its text; pressing it types into it.
+            added::Row::Field { label, text, .. } => {
+                let shown = match &self.page_edit {
+                    Some(edit) if edit.page == page && edit.row == r => {
+                        format!("{}_", edit.input.edit.value)
+                    }
+                    _ => text,
+                };
+                wide(generic(label, Text::literal(shown)))
+            }
             added::Row::Button { label, active, .. } => {
                 let wide = button(0.0, 0.0, 310.0, tr(label), act);
                 Row::Buttons(if active { wide } else { inactive(wide) }, None)
@@ -236,6 +262,25 @@ impl OptionsUi {
                 self.selected_page_key = Some((page, r));
                 Vec::new()
             }
+            Some(added::Row::Field { text, max, .. }) => {
+                let same = self
+                    .page_edit
+                    .as_ref()
+                    .is_some_and(|e| e.page == page && e.row == r);
+                if same {
+                    return self.finish_page_field();
+                }
+                let mut input = ui::EditBox::new(0.0, 0.0, 200.0, 20.0);
+                input.edit.max_length = *max;
+                input.set_value(text);
+                input.move_cursor_to_end(false);
+                self.page_edit = Some(PageEdit {
+                    page,
+                    row: r,
+                    input,
+                });
+                vec![Event::Changed]
+            }
             Some(_) => {
                 registered.act(
                     r,
@@ -249,6 +294,53 @@ impl OptionsUi {
             }
             None => Vec::new(),
         }
+    }
+
+    /// Text typed (or pasted) into the open field.
+    pub(super) fn type_page_field(&mut self, text: &str) {
+        let typed: String = text.chars().filter(|c| !c.is_control()).collect();
+        if let Some(edit) = &mut self.page_edit
+            && !typed.is_empty()
+        {
+            let before = edit.input.edit.value.clone();
+            edit.input.insert_text(&typed);
+            if edit.input.edit.value != before {
+                edit.send_edit();
+            }
+        }
+    }
+
+    /// A key while a field is open: Enter keeps the text, Escape too (each change was already
+    /// sent), the caret keys and Backspace edit, anything with text types it.
+    pub(super) fn page_field_key(
+        &mut self,
+        key: winit::keyboard::KeyCode,
+        text: Option<&str>,
+        shift: bool,
+    ) -> Vec<Event> {
+        use winit::keyboard::KeyCode as K;
+        match key {
+            K::Enter | K::NumpadEnter | K::Escape => return self.finish_page_field(),
+            _ => {}
+        }
+        if let Some(edit) = &mut self.page_edit {
+            if edit.input.key(key, false, shift) {
+                edit.send_edit();
+            } else if let Some(text) = text {
+                self.type_page_field(text);
+            }
+        }
+        vec![Event::Changed]
+    }
+
+    /// Closes the open field, telling its page.
+    fn finish_page_field(&mut self) -> Vec<Event> {
+        if let Some(edit) = self.page_edit.take()
+            && let Some(page) = registered().get(edit.page)
+        {
+            page.act(edit.row, added::Act::Submit);
+        }
+        vec![Event::Changed]
     }
 
     pub(super) fn bind_page_key(&mut self, value: String) -> Vec<Event> {
@@ -504,6 +596,59 @@ mod tests {
             *SHAPED.0.lock().unwrap(),
             [3, 5],
             "the inactive half heard nothing"
+        );
+    }
+
+    /// A text field, then a button.
+    struct Typed(Mutex<Vec<String>>);
+
+    impl added::Page for Typed {
+        fn id(&self) -> &'static str {
+            "test.typed"
+        }
+        fn title(&self) -> &'static str {
+            "test.typed.title"
+        }
+        fn place(&self) -> added::Place {
+            added::Place::HorizonSettings
+        }
+        fn rows(&self, rows: &mut Vec<added::Row>) {
+            rows.push(added::Row::field("test.typed.name", "Al").max(5));
+            rows.push(added::Row::button("test.typed.go"));
+        }
+        fn act(&self, _: usize, act: added::Act) {
+            let seen = match act {
+                added::Act::Edit(text) => format!("edit {text}"),
+                added::Act::Submit => "submit".to_owned(),
+                _ => "other".to_owned(),
+            };
+            self.0.lock().unwrap().push(seen);
+        }
+    }
+
+    static TYPED: Typed = Typed(Mutex::new(Vec::new()));
+    static TYPED_PAGES: [&dyn added::Page; 1] = [&TYPED];
+
+    #[test]
+    fn a_page_field_is_typed_into_from_its_button_and_kept_with_enter() {
+        use winit::keyboard::KeyCode as K;
+        let mut s = Settings::default();
+        TEST_PAGES.set(Some(&TYPED_PAGES));
+        let mut ui = OptionsUi::default();
+        ui.show(Page::Added(0));
+        let atlas = super::super::tests::atlas();
+        assert!(!ui.typing());
+        press(&mut ui, &mut s, Act::PageRow(0, 0), false);
+        assert!(ui.typing(), "pressing the field opens it");
+        ui.type_text(&atlas, "ice");
+        // Five characters at most: the "e" does not fit.
+        ui.type_text(&atlas, "x");
+        ui.key(&mut s, &atlas, K::Backspace, None);
+        ui.key(&mut s, &atlas, K::Enter, None);
+        assert!(!ui.typing(), "Enter closes it");
+        assert_eq!(
+            *TYPED.0.lock().unwrap(),
+            ["edit Alice", "edit Alic", "submit"]
         );
     }
 }

@@ -93,6 +93,10 @@ impl Options {
     /// The name to join servers with: the one given, else the offline name kept
     /// next to options.txt (created on first use).
     pub(super) fn player_name(&self) -> String {
+        // The account signed in now (Android's launcher page signs in while the game runs).
+        if let Some(session) = horizon_client::auth::current() {
+            return session.name.clone();
+        }
         self.player_name.clone().unwrap_or_else(|| {
             std::env::current_dir().map_or_else(
                 |_| horizon_client::offline_name::generate(0),

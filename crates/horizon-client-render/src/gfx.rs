@@ -1905,7 +1905,11 @@ const SPRITE_ARRAYS: u32 = 8;
 /// section gets its own draw call there, which also leaves out GPU culling and flat draws.
 /// `HORIZON_MULTI_DRAW=1` or `0` decides either way.
 fn multi_draw_wanted() -> bool {
-    match std::env::var("HORIZON_MULTI_DRAW").ok().as_deref().map(str::trim) {
+    match std::env::var("HORIZON_MULTI_DRAW")
+        .ok()
+        .as_deref()
+        .map(str::trim)
+    {
         Some("0") => false,
         Some("1") => true,
         _ => !cfg!(target_os = "android"),

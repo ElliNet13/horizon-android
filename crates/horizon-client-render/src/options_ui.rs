@@ -1788,6 +1788,8 @@ pub struct OptionsUi {
     /// The registered key waiting: (mod, mapping) in `mods.installed`.
     selected_mod_key: Option<(usize, usize)>,
     selected_page_key: Option<(usize, usize)>,
+    /// A registered page's text field being typed in (`pages.rs`).
+    page_edit: Option<pages::PageEdit>,
     pending_mod_key: Option<winit::keyboard::KeyCode>,
     /// Bindings: the action waiting for a pad button.
     pub selected_pad_action: Option<&'static str>,
@@ -1919,6 +1921,7 @@ impl Default for OptionsUi {
             selected_key: None,
             selected_mod_key: None,
             selected_page_key: None,
+            page_edit: None,
             pending_mod_key: None,
             selected_pad_action: None,
             pad_glyphs: crate::pad_glyph::Glyphs::default(),
@@ -2306,6 +2309,7 @@ impl OptionsUi {
                     .as_ref()
                     .is_some_and(|p| p.search_focused()),
                 Page::ControllerRadialName => self.radial_name_typing(),
+                Page::Added(_) if self.page_edit.is_some() => true,
                 _ => match self.shell() {
                     Some(shell) => shell.typing(),
                     None => self.settings_search_active(),
@@ -2405,6 +2409,7 @@ impl OptionsUi {
         self.pending_mod_key = None;
     }
     fn push(&mut self, page: Page) {
+        self.page_edit = None;
         self.relayout();
         self.stack.push(page);
         self.scroll = 0.0;
@@ -3907,6 +3912,7 @@ impl OptionsUi {
             self.scroll = 0.0;
             return events;
         }
+        self.page_edit = None;
         let page = self.stack.pop().unwrap_or(Page::Main);
         self.scroll = 0.0;
         self.scrollbar_drag_y = None;
@@ -3987,7 +3993,10 @@ impl OptionsUi {
             p.type_text(&crate::screen_draw::Measure(&atlas.font), text);
             return;
         }
-        if self.page() == Page::Language {
+        if self.page_edit.is_some() {
+            self.type_page_field(text);
+            self.relayout();
+        } else if self.page() == Page::Language {
             self.language_search.insert_text(text);
             self.scroll = 0.0;
             self.relayout();
@@ -4228,6 +4237,9 @@ impl OptionsUi {
                     .to_owned()
             };
             return self.bind_key(s, value);
+        }
+        if self.page_edit.is_some() {
+            return self.page_field_key(key, text, shift);
         }
         if self.page() == Page::SplitProfiles && self.split_profiles.key(key, text) {
             return Vec::new();

@@ -14,12 +14,16 @@ crate-type = ["cdylib"]
 [dependencies]
 sha2 = "0.10.9"
 tar = { version = "0.4", default-features = false }
-ureq = { version = "2", default-features = false, features = ["tls"] }
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 xz4rust = "0.2.3"
 libc = "0.2"
 sha1 = "0.10"
 log = "0.4"
 horizon-prepare = { path = "../horizon-prepare" }
+serde_json = "1"
+# The launcher page (`launcher_page`) builds everywhere, so its tests run on a desktop.
+horizon-hooks = { path = "../horizon-hooks" }
+horizon-client = { path = "../horizon-client", default-features = false }
 
 [build-dependencies]
 tar = { version = "0.4", default-features = false }
@@ -27,7 +31,6 @@ tar = { version = "0.4", default-features = false }
 # The rest is Android-only: on other targets the entry is empty, so the workspace builds as before.
 [target.'cfg(target_os = "android")'.dependencies]
 horizon-game = { path = "../horizon-game", default-features = false }
-horizon-client = { path = "../horizon-client", default-features = false }
 winit = { version = "0.30.13", features = ["android-native-activity"] }
 android_logger = "0.14"
 jni = "0.21"

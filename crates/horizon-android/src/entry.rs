@@ -53,6 +53,16 @@ fn android_main(app: AndroidApp) {
         }
     }
 
+    if let Some(dir) = app.external_data_path() {
+        crate::account::init(&dir);
+    }
+    // The launcher page and its text, before the game starts.
+    if let Err(e) = horizon_hooks::lang::register(crate::launcher_page::LANG)
+        .and(horizon_hooks::pages::register(&crate::launcher_page::PAGE))
+    {
+        log::warn!("launcher page not registered: {e:?}");
+    }
+
     let _ = APP.set(app);
     if let Some(app) = APP.get() {
         crate::immersive::keep(app);
