@@ -181,12 +181,27 @@ fn the_editor_shows_and_drags_controls_the_game_hides() {
     assert!(t.visible(Control::Shield));
     let home = t.placement(Control::Move).center;
     assert_eq!(t.control_at(home), Some(Control::Move));
-    let a = crate::hud::HudAtlas::build(std::path::Path::new("/nonexistent/horizon-touch-editor"))
+    let a =
+        crate::hud::HudAtlas::build(&horizon_assets::resource_source::ResourceSource::directory(
+            std::path::PathBuf::from("/nonexistent/horizon-touch-editor"),
+        ))
         .unwrap();
-    let mut idle = crate::hud::HudBatch::new([1920, 1080]);
+    let mut idle = crate::hud::HudBatch::new(
+        [1920, 1080],
+        crate::hud::GuiScale {
+            requested: 0,
+            unicode: false,
+        },
+    );
     t.draw(&mut idle, &a);
     tap(&mut t, 1, home);
-    let mut picked = crate::hud::HudBatch::new([1920, 1080]);
+    let mut picked = crate::hud::HudBatch::new(
+        [1920, 1080],
+        crate::hud::GuiScale {
+            requested: 0,
+            unicode: false,
+        },
+    );
     t.draw(&mut picked, &a);
     assert!(picked.vertices.len() > idle.vertices.len());
     t.cancel_editor();
