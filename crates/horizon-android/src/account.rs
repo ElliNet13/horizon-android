@@ -56,8 +56,17 @@ pub fn env_path() -> Option<PathBuf> {
     dir().map(|d| d.join("horizon-env.txt"))
 }
 
+/// The client ID as last read or set: the launcher page asks for it every frame, and the
+/// env file must not be read on the render thread each time.
+static CLIENT: Mutex<Option<Option<String>>> = Mutex::new(None);
+
 /// The configured Azure app's client ID.
 pub fn client_id() -> Option<String> {
+    let mut cached = CLIENT.lock().unwrap_or_else(|e| e.into_inner());
+    cached.get_or_insert_with(read_client_id).clone()
+}
+
+fn read_client_id() -> Option<String> {
     let id = env_path()
         .and_then(|p| envfile::get(&p, CLIENT_ID))
         .or_else(|| std::env::var(CLIENT_ID).ok())
@@ -71,6 +80,7 @@ pub fn set_client_id(id: &str) {
         let id = id.trim();
         let _ = envfile::set(&path, CLIENT_ID, (!id.is_empty()).then_some(id));
     }
+    *CLIENT.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 /// Starts: remembers the folder and signs in again from the kept refresh token.

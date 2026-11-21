@@ -4,7 +4,10 @@
 //! screen names it.
 use crate::{account, envfile};
 use horizon_hooks::pages::{Act, Label, Page, Place, Row};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 /// The renderer setting this page edits (`gfx.rs`'s `multi_draw_wanted`).
 const MULTI_DRAW: &str = "HORIZON_MULTI_DRAW";
@@ -26,6 +29,8 @@ enum Item {
     Name,
     SignIn,
     Cancel,
+    CopyCode,
+    OpenLink,
     Import,
     SignOut,
     ClientId,
@@ -73,9 +78,17 @@ impl Draws {
     }
 }
 
-/// The offline name kept in `horizon-player.txt`.
+/// The offline name kept in `horizon-player.txt`, read once: the page asks for its rows every
+/// frame and the file must not be read on the render thread each time.
+static NAME: Mutex<Option<String>> = Mutex::new(None);
+
 fn offline_name() -> String {
-    horizon_client::offline_name::load_or_create(&horizon_client::logging::player_dir())
+    let mut cached = NAME.lock().unwrap_or_else(|e| e.into_inner());
+    cached
+        .get_or_insert_with(|| {
+            horizon_client::offline_name::load_or_create(&horizon_client::logging::player_dir())
+        })
+        .clone()
 }
 
 fn set_offline_name(name: &str) {
@@ -84,9 +97,30 @@ fn set_offline_name(name: &str) {
         return;
     }
     BAD_NAME.store(false, Ordering::Relaxed);
+    *NAME.lock().unwrap_or_else(|e| e.into_inner()) = Some(name.to_owned());
     let path = horizon_client::logging::player_dir().join(horizon_client::offline_name::FILE);
     if let Err(e) = std::fs::write(&path, format!("name:{name}\n")) {
         log::warn!("Could not keep the player name in {}: {e}", path.display());
+    }
+}
+
+/// The phone's clipboard and browser; nothing off Android.
+mod platform {
+    #[cfg(target_os = "android")]
+    pub fn copy(text: &str) -> bool {
+        crate::clipboard::copy(text)
+    }
+    #[cfg(target_os = "android")]
+    pub fn open(url: &str) -> bool {
+        crate::clipboard::open_url(url)
+    }
+    #[cfg(not(target_os = "android"))]
+    pub fn copy(_: &str) -> bool {
+        false
+    }
+    #[cfg(not(target_os = "android"))]
+    pub fn open(_: &str) -> bool {
+        false
     }
 }
 
@@ -126,10 +160,17 @@ fn layout_with(name: String) -> Vec<(Row, Item)> {
         }
         account::State::Waiting { code, address } => {
             rows.push((
-                Row::text(format!(
-                    "On any device, open {address} and enter the code {code}"
-                )),
+                Row::text(format!("On any device, open {address} and enter this code:")),
                 Item::Display,
+            ));
+            rows.push((Row::text(code.clone()).groups(), Item::Display));
+            rows.push((
+                Row::button("horizon.android.launcher.copy_code").half(),
+                Item::CopyCode,
+            ));
+            rows.push((
+                Row::button("horizon.android.launcher.open_link").half(),
+                Item::OpenLink,
             ));
         }
         account::State::Working => rows.push((Row::text("Signing in..."), Item::Display)),
@@ -221,6 +262,18 @@ impl Page for Launcher {
             (Item::ClientId, Act::Edit(text)) => account::set_client_id(&text),
             (Item::SignIn, Act::Press) => account::begin(),
             (Item::Cancel, Act::Press) => account::cancel(),
+            (Item::CopyCode, Act::Press) => {
+                if let account::State::Waiting { code, .. } = account::state() {
+                    platform::copy(&code);
+                }
+            }
+            // The code goes on the clipboard first, so it can be pasted on the page that opens.
+            (Item::OpenLink, Act::Press) => {
+                if let account::State::Waiting { code, address } = account::state() {
+                    platform::copy(&code);
+                    platform::open(&address);
+                }
+            }
             (Item::Import, Act::Press) => account::import_session(),
             (Item::SignOut, Act::Press) => account::sign_out(),
             (Item::Draws, act @ (Act::Press | Act::PressBack)) => {
@@ -246,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn the_page_edits_the_env_file_and_signing_in_needs_an_app_id() {
+    fn the_page_edits_the_env_file_and_signing_in_uses_the_app_id() {
         let dir =
             std::env::temp_dir().join(format!("horizon-launcher-page-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -259,7 +312,12 @@ mod tests {
                 })
                 .unwrap()
         };
-        assert!(!sign_in(&layout_with(String::new())), "no app ID yet");
+        assert_eq!(
+            account::client_id().as_deref(),
+            Some("c36a9fb6-4f2a-41ff-90bd-ae7cc92031eb"),
+            "the fork's own app until another is entered"
+        );
+        assert!(sign_in(&layout_with(String::new())));
         PAGE.act(index(Item::ClientId), Act::Edit("abc-123".into()));
         assert_eq!(account::client_id().as_deref(), Some("abc-123"));
         assert!(sign_in(&layout_with(String::new())));
