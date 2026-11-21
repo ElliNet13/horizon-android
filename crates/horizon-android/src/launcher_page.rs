@@ -12,6 +12,14 @@ use std::sync::{
 /// The renderer setting this page edits (`gfx.rs`'s `multi_draw_wanted`).
 const MULTI_DRAW: &str = "HORIZON_MULTI_DRAW";
 
+/// The game folder is in the shared storage (Documents/Horizon), not the app's private folder.
+static SHARED: AtomicBool = AtomicBool::new(false);
+
+/// Says where the game folder is (set once at start).
+pub fn set_shared(shared: bool) {
+    SHARED.store(shared, Ordering::Relaxed);
+}
+
 /// The last name typed was refused.
 static BAD_NAME: AtomicBool = AtomicBool::new(false);
 
@@ -35,6 +43,8 @@ enum Item {
     SignOut,
     ClientId,
     Draws,
+    OpenFolder,
+    AllowFiles,
 }
 
 /// How the terrain is drawn: the renderer's choice, one call per section, or indirect
@@ -109,6 +119,14 @@ mod platform {
     #[cfg(target_os = "android")]
     pub fn copy(text: &str) -> bool {
         crate::clipboard::copy(text)
+    }
+    #[cfg(target_os = "android")]
+    pub fn allow_files() -> bool {
+        crate::storage::request_all_files_access()
+    }
+    #[cfg(not(target_os = "android"))]
+    pub fn allow_files() -> bool {
+        false
     }
     #[cfg(target_os = "android")]
     pub fn open(url: &str) -> bool {
@@ -237,6 +255,24 @@ fn layout_with(name: String) -> Vec<(Row, Item)> {
     ));
     let folder = account::dir().map_or_else(String::new, |d| d.display().to_string());
     rows.push((Row::Note(folder), Item::Display));
+    if SHARED.load(Ordering::Relaxed) {
+        rows.push((
+            Row::button("horizon.android.launcher.open_folder"),
+            Item::OpenFolder,
+        ));
+    } else {
+        rows.push((
+            Row::text(
+                "The Files app cannot show the app's private folder. Allow all files access, then restart the game: it moves to Documents/Horizon.",
+            )
+            .quiet(),
+            Item::Display,
+        ));
+        rows.push((
+            Row::button("horizon.android.launcher.allow_files"),
+            Item::AllowFiles,
+        ));
+    }
     rows
 }
 
@@ -276,6 +312,14 @@ impl Page for Launcher {
             }
             (Item::Import, Act::Press) => account::import_session(),
             (Item::SignOut, Act::Press) => account::sign_out(),
+            (Item::OpenFolder, Act::Press) => {
+                if let Some(dir) = account::dir() {
+                    let _ = horizon_client::desktop::open_path(dir);
+                }
+            }
+            (Item::AllowFiles, Act::Press) => {
+                platform::allow_files();
+            }
             (Item::Draws, act @ (Act::Press | Act::PressBack)) => {
                 let next = Draws::read().next(act == Act::Press);
                 if let Some(path) = account::env_path() {

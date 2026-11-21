@@ -60,3 +60,8 @@ name = "android.permission.INTERNET"
 
 [[package.metadata.android.uses_permission]]
 name = "android.permission.WAKE_LOCK"
+
+# Lets the game keep its files in Documents/Horizon, where the Files app shows them (`storage`).
+# The player grants it in Settings; without it the game keeps using the app's private folder.
+[[package.metadata.android.uses_permission]]
+name = "android.permission.MANAGE_EXTERNAL_STORAGE"
