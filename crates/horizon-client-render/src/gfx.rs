@@ -1900,6 +1900,17 @@ fn layer_split(
 }
 /// Sprite arrays terrain.wgsl binds (`sprites`, `sprites_1`...).
 const SPRITE_ARRAYS: u32 = 8;
+/// Whether section draws go out as indirect multi-draws. Not on Android: Adreno 730's Vulkan
+/// driver (build 0c393b63cf) accepts `multi_draw_indexed_indirect` and draws nothing, so each
+/// section gets its own draw call there, which also leaves out GPU culling and flat draws.
+/// `HORIZON_MULTI_DRAW=1` or `0` decides either way.
+fn multi_draw_wanted() -> bool {
+    match std::env::var("HORIZON_MULTI_DRAW").ok().as_deref().map(str::trim) {
+        Some("0") => false,
+        Some("1") => true,
+        _ => !cfg!(target_os = "android"),
+    }
+}
 /// `HORIZON_TERRAIN_DEBUG` (dev only): 1 draws every terrain pixel flat magenta, 2 the sprite
 /// alone, 3 the vertex colour and light, 4 the UV, 5 the sprite layer (terrain.wgsl's
 /// `terrain_debug`); `HORIZON_TERRAIN_VERTEX`: 1 puts each section's vertices in a square over
@@ -4249,9 +4260,7 @@ impl Renderer {
             .features()
             .contains(wgpu::Features::INDIRECT_FIRST_INSTANCE)
             && indirect_execution
-            // HORIZON_MULTI_DRAW=0 (dev only): one draw call per section, as without indirect
-            // draws, which also leaves out GPU culling and flat draws.
-            && std::env::var("HORIZON_MULTI_DRAW").map_or(true, |v| v.trim() != "0");
+            && multi_draw_wanted();
         let batchable = translucent_batchable(&adapter.get_info(), multi_draw);
         crate::graphics::offer_translucent_batching(batchable);
         let translucent_batching = batchable && translucent_batching;
