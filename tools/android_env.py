@@ -99,6 +99,11 @@ TESTS: list[list[str]] = [
     ["HORIZON_TERRAIN_DEBUG=4"],
     ["HORIZON_TERRAIN_DEBUG=5"],
     ["HORIZON_VISBUFFER=1"],
+    # Magenta terrain with its vertices moved: 19 over the screen with no matrices, 20 with
+    # its depth in the middle, 21 without the instance's origin.
+    ["HORIZON_TERRAIN_DEBUG=1", "HORIZON_TERRAIN_VERTEX=1"],
+    ["HORIZON_TERRAIN_DEBUG=1", "HORIZON_TERRAIN_VERTEX=2"],
+    ["HORIZON_TERRAIN_DEBUG=1", "HORIZON_TERRAIN_VERTEX=3"],
 ]
 
 

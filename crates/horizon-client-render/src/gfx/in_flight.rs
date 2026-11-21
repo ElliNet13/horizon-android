@@ -25,6 +25,15 @@ impl Renderer {
     pub(super) fn show_stats(&mut self, frame: u64, [sections, draws, calls]: [usize; 3]) {
         if frame > self.stats_frame {
             self.stats_frame = frame;
+            // One line every 600th shown frame: whether draw calls are issued at all.
+            static SHOWN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+            if SHOWN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 600 == 0 {
+                log::info!(
+                    "Horizon renderer: frame {frame}: {sections} sections drawn, {draws} section \
+                     draws, {calls} draw calls (GPU culling {})",
+                    self.gpu_frame
+                );
+            }
             (
                 self.drawn_sections,
                 self.section_draws,

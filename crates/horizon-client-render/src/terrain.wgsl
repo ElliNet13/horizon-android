@@ -704,6 +704,17 @@ fn terrain_vertex(position: vec3<f32>, uv: vec2<f32>, layer: u32, color: vec4<f3
     out.spherical = length(eye);
     out.cylindrical = max(length(eye.xz), abs(eye.y));
     out.fade = fade_code(w);
+    // HORIZON_TERRAIN_VERTEX (hdr_light.y, gfx.rs's `terrain_debug`): where a vertex goes
+    // instead. 1 the section's own square over the screen (no matrices at all), 2 its place
+    // with the depth set to the middle, 3 its place without the instance's origin.
+    let vertex_debug = u32(globals.hdr_light.y);
+    if vertex_debug == 1u {
+        out.clip = vec4(position.x / 8.0 - 1.0, position.y / 8.0 - 1.0, 0.5, 1.0);
+    } else if vertex_debug == 2u {
+        out.clip.z = out.clip.w * 0.5;
+    } else if vertex_debug == 3u {
+        out.clip = globals.view_proj * vec4(position, 1.0);
+    }
     const CHUNK_FULLY_VISIBLE_RANGE: f32 = 16.0;
     out.visibility = mix(1.0, instance_visibility(w),
         clamp((length(pos) - CHUNK_FULLY_VISIBLE_RANGE) / CHUNK_FULLY_VISIBLE_RANGE, 0.0, 1.0));

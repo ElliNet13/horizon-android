@@ -1902,19 +1902,28 @@ fn layer_split(
 const SPRITE_ARRAYS: u32 = 8;
 /// `HORIZON_TERRAIN_DEBUG` (dev only): 1 draws every terrain pixel flat magenta, 2 the sprite
 /// alone, 3 the vertex colour and light, 4 the UV, 5 the sprite layer (terrain.wgsl's
-/// `terrain_debug`). 0, or unset, draws as usual.
-fn terrain_debug() -> f32 {
-    static MODE: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
-    *MODE.get_or_init(|| {
-        let mode = std::env::var("HORIZON_TERRAIN_DEBUG")
-            .ok()
-            .and_then(|v| v.trim().parse::<u8>().ok())
-            .filter(|m| (1..=5).contains(m))
-            .unwrap_or(0);
-        if mode > 0 {
-            log::info!("Horizon renderer: terrain debug mode {mode} (HORIZON_TERRAIN_DEBUG)");
+/// `terrain_debug`); `HORIZON_TERRAIN_VERTEX`: 1 puts each section's vertices in a square over
+/// the screen, 2 sets their depth to the middle, 3 leaves out the instance's origin. 0, or
+/// unset, draws as usual.
+fn terrain_debug() -> [f32; 2] {
+    static MODES: std::sync::OnceLock<[f32; 2]> = std::sync::OnceLock::new();
+    *MODES.get_or_init(|| {
+        let read = |name: &str, last: u8| {
+            std::env::var(name)
+                .ok()
+                .and_then(|v| v.trim().parse::<u8>().ok())
+                .filter(|m| (1..=last).contains(m))
+                .unwrap_or(0)
+        };
+        let pixel = read("HORIZON_TERRAIN_DEBUG", 5);
+        let vertex = read("HORIZON_TERRAIN_VERTEX", 3);
+        if pixel > 0 || vertex > 0 {
+            log::info!(
+                "Horizon renderer: terrain debug: pixels {pixel}, vertices {vertex} \
+                 (HORIZON_TERRAIN_DEBUG, HORIZON_TERRAIN_VERTEX)"
+            );
         }
-        f32::from(mode)
+        [f32::from(pixel), f32::from(vertex)]
     })
 }
 /// What the meshes handed to `Renderer::upload` hold, logged now and then (first upload, then
@@ -7599,8 +7608,8 @@ impl Renderer {
                 0.0,
             ],
             hdr_light: [
-                terrain_debug(),
-                0.0,
+                terrain_debug()[0],
+                terrain_debug()[1],
                 // HDR output is on.
                 if self.hdr.is_some() { 1.0 } else { 0.0 },
                 f32::from(u8::from(hdr_gain)),
