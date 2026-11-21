@@ -123,6 +123,16 @@ libmimalloc-sys = { path = "third_party/libmimalloc-sys" }
 [profile.dev]
 debug = "line-tables-only"
 
+# Android fork: every dependency that is not part of this workspace is built as in release
+# (optimized, no debug assertions), so a debug build of the game runs at a playable speed on
+# a phone. The workspace's own crates keep the dev profile; the packages named below it
+# keep their own settings.
+[profile.dev.package."*"]
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+
 # The 512 MiB jar-boundary test still hashes every byte; run the hash kernel optimized.
 # Likewise, the API generator repeatedly parses the game's sources with syn.
 # These dependencies stay cached in CI, unlike workspace test binaries.

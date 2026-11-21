@@ -44,3 +44,6 @@
 
 # Visual Studio editor state.
 .vs/
+
+# Logs saved by tools/android_env.py.
+android-log-*.txt
