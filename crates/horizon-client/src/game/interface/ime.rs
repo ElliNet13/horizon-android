@@ -14,7 +14,9 @@ impl Game<'_> {
         if self.dialog_open() {
             return self.dialog_has_text_field();
         }
+        // Options opened over the title is the options screen's, not the title's.
         if self.title_input_active()
+            && self.screen != Screen::Options
             && let Some(title) = self.title.as_mut()
         {
             // A caret field, an append-only one (`focused_field`), or a game
