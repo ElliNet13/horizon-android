@@ -37,6 +37,20 @@ pub fn set_copy_hook(hook: CopyHook) {
     let _ = COPY_HOOK.set(hook);
 }
 
+/// Where a platform's files screen says the player may put the game's files, and whether that
+/// folder is one a file manager shows (Android: the game folder, `true` with all files access).
+pub type FilesFolderHook = fn() -> Option<(std::path::PathBuf, bool)>;
+
+static FILES_FOLDER_HOOK: std::sync::OnceLock<FilesFolderHook> = std::sync::OnceLock::new();
+
+pub fn set_files_folder_hook(hook: FilesFolderHook) {
+    let _ = FILES_FOLDER_HOOK.set(hook);
+}
+
+pub(crate) fn files_folder() -> Option<(std::path::PathBuf, bool)> {
+    FILES_FOLDER_HOOK.get().and_then(|hook| hook())
+}
+
 pub(crate) fn copy_text(text: &str) -> bool {
     COPY_HOOK.get().is_some_and(|hook| hook(text))
 }

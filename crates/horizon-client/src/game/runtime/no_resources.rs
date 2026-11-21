@@ -76,6 +76,9 @@ pub(super) fn show(looked_in: &std::path::Path, settings: &Settings) -> Result<(
     if crate::entry::prepare_hook().is_some() {
         app.screen.offer_prepare();
     }
+    if let Some((folder, shown)) = crate::entry::files_folder() {
+        app.screen.offer_folder(&folder, shown);
+    }
     if import_offered() {
         app.screen.offer_import(std::path::Path::new(IMPORT_ZIP));
     }

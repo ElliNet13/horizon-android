@@ -9,6 +9,8 @@
   "horizon.no_resources.prepare_done": "%s",
   "horizon.no_resources.prepare_failed": "Preparing failed: %s",
   "horizon.no_resources.import": "Import resources zip",
+  "horizon.no_resources.folder_shown": "All files access is on, so the game folder is %s: put the prepared files (or horizon-resources.zip) there with the Files app or a computer. It is not under Android/data.",
+  "horizon.no_resources.folder_hidden": "The game folder is %s, which the Files app cannot show. With all files access allowed (Settings > Apps > Horizon > All files access), the game uses Documents/Horizon instead, where you can put files.",
   "horizon.no_resources.import_about": "On a phone, prepare the files on a computer with horizon-prepare, zip the contents of the prepared folder, and put the zip at %s. Then tap Import.",
   "horizon.no_resources.importing": "Importing: %s",
   "horizon.no_resources.import_missing": "No zip found at %s.",

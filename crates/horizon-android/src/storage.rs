@@ -46,8 +46,37 @@ fn move_in(from: &Path, to: &Path) {
             continue;
         }
         if let Err(e) = std::fs::rename(entry.path(), &target) {
-            log::warn!("could not move {}: {e}", entry.path().display());
+            // A rename between the private folder and Documents can be refused: copy, then
+            // delete what was copied (a failed copy leaves the original where it was).
+            log::warn!("rename {}: {e}; copying instead", entry.path().display());
+            match copy_all(&entry.path(), &target) {
+                Ok(()) => {
+                    let _ = if entry.path().is_dir() {
+                        std::fs::remove_dir_all(entry.path())
+                    } else {
+                        std::fs::remove_file(entry.path())
+                    };
+                }
+                Err(e) => {
+                    log::warn!("could not move {}: {e}", entry.path().display());
+                    let _ = std::fs::remove_dir_all(&target);
+                }
+            }
         }
+    }
+}
+
+/// Copies a file or a whole folder (links followed).
+fn copy_all(from: &Path, to: &Path) -> std::io::Result<()> {
+    if from.is_dir() {
+        std::fs::create_dir_all(to)?;
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            copy_all(&entry.path(), &to.join(entry.file_name()))?;
+        }
+        Ok(())
+    } else {
+        std::fs::copy(from, to).map(|_| ())
     }
 }
 

@@ -99,6 +99,18 @@ impl NoResources {
         );
     }
 
+    /// Says which folder the player may put the files in (`entry::set_files_folder_hook`):
+    /// `shown` is whether a file manager shows it.
+    pub fn offer_folder(&mut self, folder: &std::path::Path, shown: bool) {
+        self.status_room = true;
+        let key = if shown {
+            "horizon.no_resources.folder_shown"
+        } else {
+            "horizon.no_resources.folder_hidden"
+        };
+        self.paragraphs.push(lang::tr(key, &[&folder.display()]));
+    }
+
     /// Adds the button for the platform's own preparing (`entry::set_prepare_hook`).
     pub fn offer_prepare(&mut self) {
         self.status_room = true;

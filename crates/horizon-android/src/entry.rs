@@ -105,6 +105,11 @@ pub fn run(app: AndroidApp) {
     });
     horizon_client::entry::set_prepare_hook(crate::on_device::prepare);
     horizon_client::entry::set_copy_hook(crate::clipboard::copy);
+    horizon_client::entry::set_files_folder_hook(|| {
+        let dir = std::env::current_dir().ok()?;
+        let shared = crate::storage::shared_in_use(&dir);
+        Some((dir, shared))
+    });
     // "Open folder" buttons open the documents app, as there is no file manager to start.
     horizon_client::desktop::set_open_path_hook(crate::clipboard::open_folder);
     horizon_game::main();
