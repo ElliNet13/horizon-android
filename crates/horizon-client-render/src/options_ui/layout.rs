@@ -154,10 +154,15 @@ impl OptionsUi {
                 let entries: &[_] = if horizon_extras() {
                     &entries
                 } else {
+                    // A fork's registered page (Android's Launcher) takes the greyed slot.
+                    let slot = match super::pages::first_settings_page() {
+                        Some((i, title)) => (title, Some(Page::Added(i))),
+                        None => ("options.telemetry", None),
+                    };
                     plain = [
                         &entries[..entries.len() - 3],
                         &[
-                            ("options.telemetry", None),
+                            slot,
                             ("options.credits_and_attribution", Some(Page::Credits)),
                         ],
                     ]

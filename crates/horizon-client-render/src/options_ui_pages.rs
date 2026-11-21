@@ -39,6 +39,16 @@ fn registered() -> &'static [&'static dyn added::Page] {
     added::engine::all()
 }
 
+/// The first page registered for Horizon Settings: its index and title. A build without
+/// horizon-extras shows it in Options where vanilla has Telemetry Data.
+pub(super) fn first_settings_page() -> Option<(usize, &'static str)> {
+    registered()
+        .iter()
+        .enumerate()
+        .find(|(_, page)| page.place() == added::Place::HorizonSettings)
+        .map(|(i, page)| (i, page.title()))
+}
+
 /// A registered page's title (a translation key).
 pub(super) fn title(page: usize) -> &'static str {
     registered().get(page).map_or("", |p| p.title())
