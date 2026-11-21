@@ -1810,6 +1810,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "horizon-android-debug"
+version = "0.1.0"
+dependencies = [
+ "horizon-android",
+ "winit",
+]
+
+[[package]]
 name = "horizon-anticheat"
 version = "0.1.0"
 dependencies = [

@@ -33,10 +33,10 @@ adb install -r target/release/apk/Horizon.apk
 ```
 
 A debug build is a separate app, "Horizon (Debug)" with the package `dev.horizon.android.debug`, so it
-installs beside the release one and keeps its own game folder (`/sdcard/Android/data/dev.horizon.android.debug/files`):
+installs beside the release one and keeps its own game folder:
 
 ```sh
-python3 tools/android_apk.py      # target/debug/apk/Horizon (Debug).apk
+cargo apk build -p horizon-android-debug      # target/debug/apk/Horizon (Debug).apk
 ```
 
 The first build compiles the whole game and takes a while.
