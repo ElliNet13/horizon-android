@@ -13,6 +13,10 @@ use std::{
 
 /// The Azure app's client ID, in `horizon-env.txt` (the launcher page edits it).
 pub const CLIENT_ID: &str = "HORIZON_MSA_CLIENT_ID";
+/// This fork's Azure app (approved by Mojang for Minecraft sign-in). A client ID of a public
+/// client is no secret: it is in every sign-in address. `HORIZON_MSA_CLIENT_ID` in
+/// `horizon-env.txt`, or the launcher page's field, overrides it.
+const DEFAULT_CLIENT_ID: &str = "c36a9fb6-4f2a-41ff-90bd-ae7cc92031eb";
 /// The refresh token and the app ID it belongs to.
 const ACCOUNT_FILE: &str = "horizon-account.json";
 /// A session file from the desktop launcher (the same JSON `--session-file` reads).
@@ -56,7 +60,8 @@ pub fn env_path() -> Option<PathBuf> {
 pub fn client_id() -> Option<String> {
     let id = env_path()
         .and_then(|p| envfile::get(&p, CLIENT_ID))
-        .or_else(|| std::env::var(CLIENT_ID).ok())?;
+        .or_else(|| std::env::var(CLIENT_ID).ok())
+        .unwrap_or_else(|| DEFAULT_CLIENT_ID.to_owned());
     let id = id.trim().to_owned();
     (!id.is_empty()).then_some(id)
 }
