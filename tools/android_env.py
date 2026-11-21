@@ -91,6 +91,14 @@ TESTS: list[list[str]] = [
     # Block textures in smaller arrays, and without HDR output.
     ["HORIZON_SPRITE_SPLIT=512"],
     ["HORIZON_HDR_OUTPUT=scrgb"],
+    # Where a terrain pixel is lost: 13 flat magenta, 14 the sprite alone, 15 the vertex
+    # colour and light, 16 the UV, 17 the sprite layer; 18 the visibility buffer path.
+    ["HORIZON_TERRAIN_DEBUG=1"],
+    ["HORIZON_TERRAIN_DEBUG=2"],
+    ["HORIZON_TERRAIN_DEBUG=3"],
+    ["HORIZON_TERRAIN_DEBUG=4"],
+    ["HORIZON_TERRAIN_DEBUG=5"],
+    ["HORIZON_VISBUFFER=1"],
 ]
 
 
