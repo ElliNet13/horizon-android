@@ -7,6 +7,8 @@
   "horizon.android.launcher.cancel": "Cancel sign-in",
   "horizon.android.launcher.copy_code": "Copy code",
   "horizon.android.launcher.open_link": "Open link",
+  "horizon.android.launcher.open_folder": "Open in Files",
+  "horizon.android.launcher.allow_files": "Allow all files access",
   "horizon.android.launcher.import": "Use session file",
   "horizon.android.launcher.sign_out": "Sign out",
   "horizon.android.launcher.client_id": "Microsoft app ID (client ID)",

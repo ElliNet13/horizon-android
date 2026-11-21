@@ -25,4 +25,6 @@ mod on_device;
 #[cfg(target_os = "android")]
 mod preload;
 #[cfg(target_os = "android")]
+mod storage;
+#[cfg(target_os = "android")]
 mod wake;

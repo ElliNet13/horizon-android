@@ -16,6 +16,8 @@ fn android_main(app: AndroidApp) {
             )
             .with_tag("horizon"),
     );
+    // The JNI helpers (`storage`, `clipboard`) need the activity from the start.
+    let _ = APP.set(app.clone());
     std::panic::set_hook(Box::new(|info| log::error!("panic: {info}")));
     // Which build this is, and the thread stack it asked for (the first lines of a crash log).
     log::info!(
@@ -26,8 +28,12 @@ fn android_main(app: AndroidApp) {
 
     // The game keeps its saves, options and prepared resources in the working directory, which
     // is read-only on Android: use the app's external folder (/sdcard/Android/data/<package>/files,
-    // reachable with `adb push`).
-    if let Some(dir) = app.external_data_path() {
+    // reachable with `adb push`), or Documents/Horizon where the Files app shows it (`storage`).
+    // The app's private folder, or Documents/Horizon once the player allows all files access.
+    let game_dir = app
+        .external_data_path()
+        .map(|private| crate::storage::game_dir(&private));
+    if let Some(dir) = game_dir.clone() {
         let _ = std::fs::create_dir_all(&dir);
         let _ = std::env::set_current_dir(&dir);
         // SAFETY: nothing else runs yet, so no other thread reads the environment.
@@ -53,8 +59,9 @@ fn android_main(app: AndroidApp) {
         }
     }
 
-    if let Some(dir) = app.external_data_path() {
-        crate::account::init(&dir);
+    if let Some(dir) = &game_dir {
+        crate::account::init(dir);
+        crate::launcher_page::set_shared(crate::storage::shared_in_use(dir));
     }
     // The launcher page and its text, before the game starts.
     if let Err(e) = horizon_hooks::lang::register(crate::launcher_page::LANG)
