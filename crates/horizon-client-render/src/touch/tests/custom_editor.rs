@@ -148,10 +148,19 @@ fn every_choice_is_a_valid_saved_token() {
 
 #[test]
 fn the_selected_button_and_its_panels_are_drawn() {
-    let a = crate::hud::HudAtlas::build(std::path::Path::new("/nonexistent/horizon-touch-keys"))
+    let a =
+        crate::hud::HudAtlas::build(&horizon_assets::resource_source::ResourceSource::directory(
+            std::path::PathBuf::from("/nonexistent/horizon-touch-keys"),
+        ))
         .unwrap();
     let count = |t: &TouchControls| {
-        let mut b = crate::hud::HudBatch::new([1920, 1080]);
+        let mut b = crate::hud::HudBatch::new(
+            [1920, 1080],
+            crate::hud::GuiScale {
+                requested: 0,
+                unicode: false,
+            },
+        );
         t.draw(&mut b, &a);
         b.vertices.len()
     };

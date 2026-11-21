@@ -161,10 +161,19 @@ fn saved_buttons_survive_and_bad_ones_are_dropped() {
 
 #[test]
 fn custom_buttons_are_drawn() {
-    let a = crate::hud::HudAtlas::build(std::path::Path::new("/nonexistent/horizon-touch-custom"))
+    let a =
+        crate::hud::HudAtlas::build(&horizon_assets::resource_source::ResourceSource::directory(
+            std::path::PathBuf::from("/nonexistent/horizon-touch-custom"),
+        ))
         .unwrap();
     let count = |t: &TouchControls| {
-        let mut b = crate::hud::HudBatch::new([1920, 1080]);
+        let mut b = crate::hud::HudBatch::new(
+            [1920, 1080],
+            crate::hud::GuiScale {
+                requested: 0,
+                unicode: false,
+            },
+        );
         t.draw(&mut b, &a);
         b.vertices.len()
     };
