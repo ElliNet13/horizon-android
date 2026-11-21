@@ -22,6 +22,8 @@ workspace = true
 # Build with `cargo apk build -p horizon-android-debug` (the same game as horizon-android; only
 # the app's name and package differ). cargo-apk takes these from the crate it builds.
 [package.metadata.android]
+# The launcher icon: Horizon's own, from packaging/icons, at each density.
+resources = "../horizon-android/res"
 package = "dev.horizon.android.debug"
 apk_name = "Horizon (Debug)"
 build_targets = ["aarch64-linux-android"]
@@ -31,6 +33,7 @@ min_sdk_version = 26
 target_sdk_version = 34
 
 [package.metadata.android.application]
+icon = "@mipmap/ic_launcher"
 label = "Horizon (Debug)"
 
 [package.metadata.android.application.activity]

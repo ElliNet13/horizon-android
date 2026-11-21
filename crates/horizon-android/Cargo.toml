@@ -51,6 +51,8 @@ workspace = true
 
 # Build with `cargo apk build --release -p horizon-android` (cargo-apk, NativeActivity).
 [package.metadata.android]
+# The launcher icon: Horizon's own, from packaging/icons, at each density.
+resources = "res"
 package = "dev.horizon.android"
 apk_name = "Horizon"
 build_targets = ["aarch64-linux-android"]
@@ -60,6 +62,7 @@ min_sdk_version = 26
 target_sdk_version = 34
 
 [package.metadata.android.application]
+icon = "@mipmap/ic_launcher"
 label = "Horizon"
 
 [package.metadata.android.application.activity]
