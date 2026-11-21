@@ -3,12 +3,16 @@ use winit::platform::android::{EventLoopBuilderExtAndroid, activity::AndroidApp}
 
 pub(crate) static APP: OnceLock<AndroidApp> = OnceLock::new();
 
-/// The app's entry when this crate is the app (`horizon-android-debug` has its own and runs
-/// [`run`] without this one).
-#[cfg(feature = "entry-point")]
-#[unsafe(no_mangle)]
-fn android_main(app: AndroidApp) {
-    run(app);
+/// The official server in the server list, without `horizon_official_servers::HOOKS`'s other
+/// answer: it sends a game without its files to Horizon's desktop launcher, which has no Android
+/// version (the on-device preparing is this app's own).
+struct Servers;
+static SERVERS: Servers = Servers;
+
+impl horizon_hooks::Hooks for Servers {
+    fn started(&self, game: &horizon_hooks::Started<'_>) {
+        horizon_official_servers::update(game.game_dir);
+    }
 }
 
 /// Starts the game on the activity: what `android_main` does.
@@ -76,7 +80,7 @@ pub fn run(app: AndroidApp) {
     let parts: [&'static dyn horizon_hooks::Hooks; 3] = [
         &horizon_heartbeat::HOOKS,
         &horizon_friends::game::HOOKS,
-        &horizon_official_servers::HOOKS,
+        &SERVERS,
     ];
     for part in parts {
         if let Err(e) = horizon_hooks::register(part) {
