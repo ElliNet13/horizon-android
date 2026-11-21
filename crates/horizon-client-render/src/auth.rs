@@ -5,7 +5,7 @@
 //! process's memory: it is never logged, printed or written anywhere.
 use std::{
     path::Path,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
 
@@ -123,14 +123,19 @@ impl AuthSession {
     }
 }
 
-static CURRENT: OnceLock<Arc<AuthSession>> = OnceLock::new();
+static CURRENT: Mutex<Option<Arc<AuthSession>>> = Mutex::new(None);
 
-/// The account this game was started with (set once at start).
+/// The account the game plays as: the one it was started with, or (Android's launcher page)
+/// the one signed in since, which replaces it.
 pub fn set_current(session: AuthSession) {
-    let _ = CURRENT.set(Arc::new(session));
+    *CURRENT.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(session));
+}
+/// Signs the account out: the game plays offline again.
+pub fn clear_current() {
+    *CURRENT.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 pub fn current() -> Option<Arc<AuthSession>> {
-    CURRENT.get().cloned()
+    CURRENT.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 /// Why joining a server through the session service failed, like the

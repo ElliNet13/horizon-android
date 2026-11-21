@@ -5,9 +5,13 @@
 //! It also offers the no-prepared-files screen a way to prepare on the device (`on_device`): a
 //! Java runtime fetched at run time (`provision`) runs the preparer, then goes away.
 
+pub mod account;
 pub mod download;
+pub mod envfile;
 pub mod flow;
+pub mod launcher_page;
 pub mod mojang;
+pub mod msa;
 pub mod provision;
 
 #[cfg(target_os = "android")]
