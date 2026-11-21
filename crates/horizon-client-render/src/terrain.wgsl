@@ -719,6 +719,20 @@ fn apply_fog(color: vec4<f32>, spherical: f32, cylindrical: f32) -> vec4<f32> {
                 linear_fog(cylindrical, globals.fog.z, globals.fog.w));
     return vec4(mix(color.rgb, globals.fog_color.rgb, f * globals.fog_color.a), color.a);
 }
+// HORIZON_TERRAIN_DEBUG (hdr_light.x, gfx.rs's `terrain_debug`): what a terrain pixel shows
+// instead of its colour, to find where one is lost. 1 a flat colour, 2 the sprite as sampled
+// and nothing else, 3 the vertex colour with its light, 4 the UV, 5 the sprite layer.
+fn terrain_debug(in: TerrainOut) -> vec4<f32> {
+    let mode = u32(globals.hdr_light.x);
+    if mode == 2u {
+        let t = sprite(in.uv, in.layer & 0x7fffu);
+        return vec4(t.rgb, 1.0);
+    }
+    if mode == 3u { return vec4(in.color.rgb, 1.0); }
+    if mode == 4u { return vec4(fract(in.uv), 0.0, 1.0); }
+    if mode == 5u { return vec4(vec3(f32(in.layer & 0x7fffu) / 1301.0), 1.0); }
+    return vec4(1.0, 0.0, 1.0, 1.0);
+}
 @fragment fn fs_solid(wire: TerrainWire) -> @location(0) vec4<f32> {
     let in = from_wire(wire);
     return solid_color(in);
@@ -726,6 +740,7 @@ fn apply_fog(color: vec4<f32>, spherical: f32, cylindrical: f32) -> vec4<f32> {
 // `fs_solid` for the opaque pass (`opaque_quad`): no fade, no cutout, no discard.
 @fragment fn fs_opaque(wire: TerrainWire) -> @location(0) vec4<f32> {
     let in = from_wire(wire);
+    if globals.hdr_light.x > 0.5 { return terrain_debug(in); }
     let texel = sprite(in.uv, in.layer & 0x7fffu);
     var color = texel * in.color;
     color = mix(globals.fog_color * vec4(1.0, 1.0, 1.0, color.a), color, in.visibility);
@@ -739,6 +754,7 @@ fn apply_fog(color: vec4<f32>, spherical: f32, cylindrical: f32) -> vec4<f32> {
     return solid_color(in);
 }
 fn solid_color(in: TerrainOut) -> vec4<f32> {
+    if globals.hdr_light.x > 0.5 { return terrain_debug(in); }
     let dx = dpdx(in.local);
     let dy = dpdy(in.local);
     if faded(in.fade, in.local, dx, dy) { discard; }

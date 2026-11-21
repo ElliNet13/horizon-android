@@ -1900,6 +1900,54 @@ fn layer_split(
 }
 /// Sprite arrays terrain.wgsl binds (`sprites`, `sprites_1`...).
 const SPRITE_ARRAYS: u32 = 8;
+/// `HORIZON_TERRAIN_DEBUG` (dev only): 1 draws every terrain pixel flat magenta, 2 the sprite
+/// alone, 3 the vertex colour and light, 4 the UV, 5 the sprite layer (terrain.wgsl's
+/// `terrain_debug`). 0, or unset, draws as usual.
+fn terrain_debug() -> f32 {
+    static MODE: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+    *MODE.get_or_init(|| {
+        let mode = std::env::var("HORIZON_TERRAIN_DEBUG")
+            .ok()
+            .and_then(|v| v.trim().parse::<u8>().ok())
+            .filter(|m| (1..=5).contains(m))
+            .unwrap_or(0);
+        if mode > 0 {
+            log::info!("Horizon renderer: terrain debug mode {mode} (HORIZON_TERRAIN_DEBUG)");
+        }
+        f32::from(mode)
+    })
+}
+/// What the meshes handed to `Renderer::upload` hold, logged now and then (first upload, then
+/// every 512th): meshes with and without quads, whether the arena took them, and their quads.
+fn log_mesh_totals(empty: bool, kept: bool, mesh: &SectionMesh) {
+    use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
+    static UPLOADS: AtomicU64 = AtomicU64::new(0);
+    static EMPTY: AtomicU64 = AtomicU64::new(0);
+    static REFUSED: AtomicU64 = AtomicU64::new(0);
+    static SOLID: AtomicU64 = AtomicU64::new(0);
+    static TRANSLUCENT: AtomicU64 = AtomicU64::new(0);
+    static PACKED: AtomicU64 = AtomicU64::new(0);
+    let n = UPLOADS.fetch_add(1, Relaxed) + 1;
+    if empty {
+        EMPTY.fetch_add(1, Relaxed);
+    } else if !kept {
+        REFUSED.fetch_add(1, Relaxed);
+    }
+    SOLID.fetch_add((mesh.solid.len() / 4) as u64, Relaxed);
+    TRANSLUCENT.fetch_add((mesh.translucent.len() / 4) as u64, Relaxed);
+    PACKED.fetch_add(mesh.packed.len() as u64, Relaxed);
+    if n == 1 || n % 512 == 0 {
+        log::info!(
+            "Horizon renderer: {n} section meshes uploaded: {} empty, {} refused by the arena; \
+             {} solid quads, {} translucent, {} packed words",
+            EMPTY.load(Relaxed),
+            REFUSED.load(Relaxed),
+            SOLID.load(Relaxed),
+            TRANSLUCENT.load(Relaxed),
+            PACKED.load(Relaxed),
+        );
+    }
+}
 /// The layers to give a square texture of `count` layers viewed as a 2D
 /// array. wgpu's OpenGL backend picks a texture's target from its layer
 /// count when it is created: one layer makes a 2D texture and a multiple of
@@ -5131,6 +5179,7 @@ impl Renderer {
         let fading = self.before_mesh(key, &facts);
         let section = self.upload_mesh(mesh);
         let drawn = section.is_some() || facts.empty;
+        log_mesh_totals(facts.empty, section.is_some(), mesh);
         if drawn {
             self.upload_retries.uploaded(key);
         } else {
@@ -7550,7 +7599,7 @@ impl Renderer {
                 0.0,
             ],
             hdr_light: [
-                0.0,
+                terrain_debug(),
                 0.0,
                 // HDR output is on.
                 if self.hdr.is_some() { 1.0 } else { 0.0 },
