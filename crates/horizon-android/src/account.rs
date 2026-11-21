@@ -147,13 +147,31 @@ fn sign_in() -> Result<(), String> {
             return Err("The sign-in code expired. Start again.".into());
         }
         match msa::poll(&ep, &id, &code)? {
-            msa::Poll::Pending => {}
+            // In the background Android cuts the network off: wait until the game is back.
+            msa::Poll::Pending | msa::Poll::Offline => {}
             msa::Poll::SlowDown => interval = (interval + 5).min(60),
             msa::Poll::Done(tokens) => break tokens,
         }
     };
     set(State::Working);
-    finish(msa::minecraft(&ep, tokens)?, &id)
+    finish(online(|| msa::minecraft(&ep, tokens.clone()))?, &id)
+}
+
+/// Runs `step` again for as long as the network is out (two minutes at most), so a sign-in
+/// that finishes while the game is in the background carries on once it is back.
+fn online<T>(mut step: impl FnMut() -> Result<T, String>) -> Result<T, String> {
+    let give_up = Instant::now() + Duration::from_secs(120);
+    loop {
+        match step() {
+            Err(e) if msa::is_offline(&e) && Instant::now() < give_up => {
+                if CANCEL.load(Ordering::Relaxed) {
+                    return Err("Sign-in cancelled.".into());
+                }
+                std::thread::sleep(Duration::from_secs(3));
+            }
+            other => return other,
+        }
+    }
 }
 
 /// Signs in again from the refresh token kept by an earlier sign-in.
@@ -167,13 +185,13 @@ fn resume() {
             return Err("the account file is incomplete".to_owned());
         };
         let ep = msa::Endpoints::live();
-        let tokens = msa::refresh(&ep, &id, &refresh).inspect_err(|e| {
+        let tokens = online(|| msa::refresh(&ep, &id, &refresh)).inspect_err(|e| {
             // A refresh token that no longer works is of no use again.
             if e.contains("expired") {
                 let _ = std::fs::remove_file(dir.join(ACCOUNT_FILE));
             }
         })?;
-        finish(msa::minecraft(&ep, tokens)?, &id)
+        finish(online(|| msa::minecraft(&ep, tokens.clone()))?, &id)
     })();
     if let Err(message) = result {
         log::warn!("Account sign-in: {message}");
