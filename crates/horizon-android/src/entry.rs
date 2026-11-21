@@ -71,6 +71,18 @@ pub fn run(app: AndroidApp) {
         crate::account::init(dir);
         crate::launcher_page::set_shared(crate::storage::shared_in_use(dir));
     }
+    // Horizon's online parts, as `horizon_official::register` adds them on a desktop: the
+    // "I'm playing" ping, Play with Friends, the official server in the server list.
+    let parts: [&'static dyn horizon_hooks::Hooks; 3] = [
+        &horizon_heartbeat::HOOKS,
+        &horizon_friends::game::HOOKS,
+        &horizon_official_servers::HOOKS,
+    ];
+    for part in parts {
+        if let Err(e) = horizon_hooks::register(part) {
+            log::warn!("Horizon: an in-game part did not register: {e}");
+        }
+    }
     // The launcher page and its text, before the game starts.
     if let Err(e) = horizon_hooks::lang::register(crate::launcher_page::LANG)
         .and(horizon_hooks::pages::register(&crate::launcher_page::PAGE))

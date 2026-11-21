@@ -28,14 +28,20 @@ horizon-prepare = { path = "../horizon-prepare" }
 serde_json = "1"
 # The launcher page (`launcher_page`) builds everywhere, so its tests run on a desktop.
 horizon-hooks = { path = "../horizon-hooks" }
-horizon-client = { path = "../horizon-client", default-features = false }
+# Horizon's extras: cosmetics, the Horizon Settings and Mods pages, Play with Friends...
+horizon-client = { path = "../horizon-client", default-features = false, features = ["horizon-extras"] }
+# The parts `horizon-official` registers on a desktop, without it: it brings the audio and
+# controller crates, and Discord and perf sharing mean nothing on a phone (`entry`).
+horizon-heartbeat = { path = "../horizon-heartbeat" }
+horizon-friends = { path = "../horizon-friends", features = ["game"] }
+horizon-official-servers = { path = "../horizon-official-servers" }
 
 [build-dependencies]
 tar = { version = "0.4", default-features = false }
 
 # The rest is Android-only: on other targets the entry is empty, so the workspace builds as before.
 [target.'cfg(target_os = "android")'.dependencies]
-horizon-game = { path = "../horizon-game", default-features = false }
+horizon-game = { path = "../horizon-game", default-features = false, features = ["horizon-extras"] }
 winit = { version = "0.30.13", features = ["android-native-activity"] }
 android_logger = "0.14"
 jni = "0.21"
