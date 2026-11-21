@@ -3,7 +3,4 @@
 //! own game folder. Only the app's name and package (Cargo.toml) differ.
 
 #[cfg(target_os = "android")]
-#[unsafe(no_mangle)]
-fn android_main(app: winit::platform::android::activity::AndroidApp) {
-    horizon_android::run(app);
-}
+horizon_android::export_app!();

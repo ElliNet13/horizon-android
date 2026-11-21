@@ -3,11 +3,13 @@
 //! loader instead. This library is preloaded into such a program and answers that one read with
 //! the path in `HORIZON_PROC_SELF_EXE`; every other `readlink` goes to the kernel as before.
 //! In the game's own process the variable is never set, so nothing changes there.
+//!
+//! The C symbols themselves (`readlink`, `execve`, the stack raise at load) are made by
+//! [`export_app!`](crate::export_app) in the crate that builds the `.so`, so each app has them.
 
 /// # Safety
 /// Called by C code with `readlink`'s contract: `path` a C string, `buf` writable for `size` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn readlink(
+pub unsafe extern "C" fn readlink_hook(
     path: *const libc::c_char,
     buf: *mut libc::c_char,
     size: libc::size_t,
@@ -33,8 +35,7 @@ pub unsafe extern "C" fn readlink(
 /// # Safety
 /// Called by C code with `execve`'s contract: `path` a C string, `argv` and `envp` NULL-terminated
 /// arrays of C strings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn execve(
+pub unsafe extern "C" fn execve_hook(
     path: *const libc::c_char,
     argv: *const *const libc::c_char,
     envp: *const *const libc::c_char,
@@ -89,7 +90,11 @@ pub fn own_path() -> Option<std::path::PathBuf> {
     let maps = std::fs::read_to_string("/proc/self/maps").ok()?;
     maps.lines()
         .filter_map(|l| l.split_whitespace().nth(5))
-        .find(|p| p.ends_with("libhorizon_android.so"))
+        .find(|p| {
+            // `libhorizon_android.so`, or `libhorizon_android_debug.so` in the debug app.
+            let name = p.rsplit('/').next().unwrap_or_default();
+            name.starts_with("libhorizon_android") && name.ends_with(".so")
+        })
         .map(std::path::PathBuf::from)
 }
 
@@ -100,14 +105,10 @@ pub fn own_path() -> Option<std::path::PathBuf> {
 /// set when this library loads, before the activity starts.
 const THREAD_STACK: &core::ffi::CStr = c"67108864";
 
-extern "C" fn raise_thread_stack() {
+pub extern "C" fn raise_thread_stack() {
     // Not overriding a value the player set (`setenv`'s last argument 0).
     // SAFETY: both strings are NUL-terminated and live for the whole program.
     unsafe {
         libc::setenv(c"RUST_MIN_STACK".as_ptr(), THREAD_STACK.as_ptr(), 0);
     }
 }
-
-#[used]
-#[unsafe(link_section = ".init_array")]
-static RAISE_THREAD_STACK: extern "C" fn() = raise_thread_stack;
