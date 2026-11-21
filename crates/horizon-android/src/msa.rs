@@ -51,13 +51,25 @@ impl std::fmt::Debug for DeviceCode {
 }
 
 /// The Microsoft tokens: the access token only lasts for the Xbox step.
+#[derive(Clone)]
 pub struct Tokens {
     access: String,
     pub refresh: String,
 }
 
+/// How a failed connection starts its message (`is_offline` tells it from a refusal).
+const UNREACHABLE: &str = "Could not reach";
+
+/// Whether `error` (from this module) is a failed connection, not an answer.
+pub fn is_offline(error: &str) -> bool {
+    error.starts_with(UNREACHABLE)
+}
+
 pub enum Poll {
     Pending,
+    /// The network could not be reached (the app is in the background, where Android cuts it
+    /// off): ask again later.
+    Offline,
     /// The service asked to poll less often.
     SlowDown,
     Done(Tokens),
@@ -114,7 +126,7 @@ fn send(
     let response = match result {
         Ok(response) => response,
         Err(ureq::Error::Status(_, response)) => response,
-        Err(e) => return Err(format!("Could not reach {what}: {e}")),
+        Err(e) => return Err(format!("{UNREACHABLE} {what}: {e}")),
     };
     let status = response.status();
     let value = response.into_json::<Value>().unwrap_or(Value::Null);
@@ -184,7 +196,7 @@ fn tokens(status: u16, v: &Value) -> Result<Tokens, String> {
 
 /// One poll of the token endpoint while the player signs in.
 pub fn poll(ep: &Endpoints, client_id: &str, code: &DeviceCode) -> Result<Poll, String> {
-    let (status, v) = send(
+    let (status, v) = match send(
         "POST",
         &format!("{}/token", ep.microsoft),
         None,
@@ -194,7 +206,11 @@ pub fn poll(ep: &Endpoints, client_id: &str, code: &DeviceCode) -> Result<Poll, 
             ("device_code", &code.device_code),
         ])),
         "Microsoft",
-    )?;
+    ) {
+        Ok(answer) => answer,
+        Err(e) if is_offline(&e) => return Ok(Poll::Offline),
+        Err(e) => return Err(e),
+    };
     match v.get("error").and_then(Value::as_str) {
         Some("authorization_pending") => Ok(Poll::Pending),
         Some("slow_down") => Ok(Poll::SlowDown),
@@ -409,6 +425,22 @@ mod tests {
         assert_eq!(account.access_token, "mc-token");
         assert_eq!(account.xuid.as_deref(), Some("2535"));
         assert_eq!(account.refresh, "rt");
+    }
+
+    #[test]
+    fn a_poll_with_no_network_waits_instead_of_failing() {
+        let code = DeviceCode {
+            user_code: String::new(),
+            verification_uri: String::new(),
+            interval: 1,
+            expires_in: 1,
+            device_code: "dc".into(),
+        };
+        // Nothing listens on port 1: the connection is refused, as with no network.
+        assert!(matches!(
+            poll(&endpoints("http://127.0.0.1:1"), "c", &code),
+            Ok(Poll::Offline)
+        ));
     }
 
     #[test]
