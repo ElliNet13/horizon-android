@@ -15,6 +15,7 @@ them once at startup and logs each as `horizon-env.txt: NAME=VALUE`.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -22,7 +23,9 @@ import tempfile
 import time
 from pathlib import Path
 
-PACKAGE = "dev.horizon.android"
+# The debug build (tools/android_apk.py) is its own app; HORIZON_ANDROID_PACKAGE=dev.horizon.android
+# points these tests at the release one.
+PACKAGE = os.environ.get("HORIZON_ANDROID_PACKAGE", "dev.horizon.android.debug")
 GAME_DIR = f"/sdcard/Android/data/{PACKAGE}/files"
 ENV_FILE = f"{GAME_DIR}/horizon-env.txt"
 LOG_TAGS = ["horizon", "RustStdoutStderr", "AndroidRuntime", "DEBUG", "libc"]

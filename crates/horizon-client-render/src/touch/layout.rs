@@ -232,7 +232,7 @@ impl Default for Settings {
             shield_button: true,
             button_visibility: [FOLLOW_SCHEME; CONTROLS],
             layouts,
-            sensitivity: 1.0,
+            sensitivity: 2.0,
             sensitivity_horizontal: 1.0,
             sensitivity_vertical: 1.0,
             sprint_toggle: false,

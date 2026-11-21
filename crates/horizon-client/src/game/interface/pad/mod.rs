@@ -434,7 +434,15 @@ impl Game<'_> {
         self.ui.options.pad_driving = self.pad.in_use && self.pad_focus_mode();
         let touch = self.touch_pad_state();
         let mut state = hardware.merge(&self.pad.injected).merge(&touch);
-        let activity = self.pad.activity.observe(&state, &self.settings.controller);
+        // The touch controls drive the game through this state, but they are no controller:
+        // only a real pad's (or an agent's) use makes the game show controller hints.
+        let activity = self
+            .pad
+            .activity
+            .observe(&hardware.merge(&self.pad.injected), &self.settings.controller);
+        if touch != PadState::default() {
+            self.pad.in_use = false;
+        }
         for (i, (stick, deadzone)) in [
             (&mut state.left, self.settings.controller.move_deadzone),
             (&mut state.right, self.settings.controller.look_deadzone),
