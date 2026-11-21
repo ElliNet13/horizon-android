@@ -4500,7 +4500,10 @@ impl Renderer {
         let multi_draw = device
             .features()
             .contains(wgpu::Features::INDIRECT_FIRST_INSTANCE)
-            && indirect_execution;
+            && indirect_execution
+            // HORIZON_MULTI_DRAW=0 (dev only): one draw call per section, as without indirect
+            // draws, which also leaves out GPU culling and flat draws.
+            && std::env::var("HORIZON_MULTI_DRAW").map_or(true, |v| v.trim() != "0");
         let translucent = match &flat {
             Some(f) if translucent_pulled(&adapter.get_info(), multi_draw, true) => {
                 let layout = kept.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
