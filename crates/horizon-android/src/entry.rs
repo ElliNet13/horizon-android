@@ -3,8 +3,16 @@ use winit::platform::android::{EventLoopBuilderExtAndroid, activity::AndroidApp}
 
 pub(crate) static APP: OnceLock<AndroidApp> = OnceLock::new();
 
+/// The app's entry when this crate is the app (`horizon-android-debug` has its own and runs
+/// [`run`] without this one).
+#[cfg(feature = "entry-point")]
 #[unsafe(no_mangle)]
 fn android_main(app: AndroidApp) {
+    run(app);
+}
+
+/// Starts the game on the activity: what `android_main` does.
+pub fn run(app: AndroidApp) {
     android_logger::init_once(
         android_logger::Config::default()
             .with_max_level(log::LevelFilter::Info)

@@ -19,6 +19,8 @@ mod clipboard;
 #[cfg(target_os = "android")]
 mod entry;
 #[cfg(target_os = "android")]
+pub use entry::run;
+#[cfg(target_os = "android")]
 mod immersive;
 #[cfg(target_os = "android")]
 mod on_device;

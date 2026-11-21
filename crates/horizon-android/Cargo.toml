@@ -8,7 +8,12 @@ description = "The game as an Android app: a NativeActivity library that starts 
 publish = false
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# `android_main` is this crate's; `horizon-android-debug` turns it off and has its own.
+default = ["entry-point"]
+entry-point = []
 
 # The Java runtime fetch (`provision`) builds everywhere, so its tests run on a desktop.
 [dependencies]
