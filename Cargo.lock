@@ -1794,8 +1794,11 @@ version = "0.1.0"
 dependencies = [
  "android_logger",
  "horizon-client",
+ "horizon-friends",
  "horizon-game",
+ "horizon-heartbeat",
  "horizon-hooks",
+ "horizon-official-servers",
  "horizon-prepare",
  "jni 0.21.1",
  "libc",
