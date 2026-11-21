@@ -40,8 +40,21 @@ pub fn opener(path: &Path) -> io::Result<Opener> {
     }
 }
 
+/// A platform's own way to open a path (Android's documents app); it returns whether it did.
+static OPEN_PATH_HOOK: std::sync::OnceLock<fn(&Path) -> bool> = std::sync::OnceLock::new();
+
+/// Makes [`open_path`] try `hook` first (once; later calls are ignored).
+pub fn set_open_path_hook(hook: fn(&Path) -> bool) {
+    let _ = OPEN_PATH_HOOK.set(hook);
+}
+
 /// Opens `path` without waiting for its handler.
 pub fn open_path(path: &Path) -> io::Result<()> {
+    if let Some(hook) = OPEN_PATH_HOOK.get()
+        && hook(path)
+    {
+        return Ok(());
+    }
     match opener(path)? {
         // ShellExecuteExW with the default verb: `open` only takes its folder shortcut
         // (SHOpenFolderAndSelectItems) for a path that is a directory, never for a URI.
