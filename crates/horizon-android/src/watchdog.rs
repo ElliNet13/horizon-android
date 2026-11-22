@@ -18,7 +18,7 @@ use std::time::Duration;
 
 const SCRIPT: &str = include_str!("../assets/watchdog.sh");
 
-/// Left by a crash: the first line says what ended the game, the rest is for the crash screen.
+/// Left by a crash (the first marker stays: a report's, before the signal its exit raises): the first line says what ended the game, the rest is for the crash screen.
 const CRASHED: &str = "crashed";
 /// Left by the screen's Restart button.
 const RESTART: &str = "restart";
@@ -250,7 +250,7 @@ extern "C" fn on_signal(signal: libc::c_int, info: *mut libc::siginfo_t, context
         {
             let fd = libc::open(
                 path.as_ptr(),
-                libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC,
+                libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL,
                 0o600,
             );
             if fd >= 0 {

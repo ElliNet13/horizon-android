@@ -628,3 +628,15 @@ pub fn set_restart_hook(hook: RestartHook) {
 pub(crate) fn restart_hook() -> Option<RestartHook> {
     RESTART_HOOK.get().copied()
 }
+
+static CRASH_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Asks the game to stop with an error at its next tick, as a bug would (a debug page's button):
+/// the crash report is written and the game ends, the way `key.debug.crash` does it.
+pub fn request_crash() {
+    CRASH_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub(crate) fn take_crash_request() -> bool {
+    CRASH_REQUESTED.swap(false, std::sync::atomic::Ordering::SeqCst)
+}

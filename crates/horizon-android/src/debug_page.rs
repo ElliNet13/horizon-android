@@ -70,8 +70,8 @@ impl Page for Debug {
             return;
         };
         match (item, act) {
-            // A panic goes where any bug's does: the crash handler saves a report and ends the game.
-            (Item::CrashError, Act::Press) => panic!("Debug: the crash button was pressed"),
+            // An error the game stops with, as a bug's: the crash report is saved and the game ends.
+            (Item::CrashError, Act::Press) => horizon_client::entry::request_crash(),
             (Item::CrashNative, Act::Press) => crate::watchdog::crash_natively(),
             (Item::KillWatchdog, Act::Press) => crate::watchdog::kill_watchdog(),
             _ => {}

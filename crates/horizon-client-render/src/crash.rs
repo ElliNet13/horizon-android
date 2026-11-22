@@ -775,13 +775,18 @@ pub fn worker_panic_report(info: &std::panic::PanicHookInfo, side: &'static str)
 /// does. The default hook still prints the panic. A panic inside `contain` is only logged. A
 /// panic inside a native mod's hook names the mod and the hook.
 pub fn install(home: PathBuf, side: &'static str) {
+    // (`set_game_thread` names the thread a platform runs the game on.)
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         if contained_panic(info) {
             return;
         }
         default(info);
-        let main = std::thread::current().name() == Some("main");
+        // Android runs the game on the activity's thread, not the process's main one: a panic
+        // there is the game's crash, and the process must end (the activity's glue would catch
+        // it and leave a window nobody draws).
+        let android_game = GAME_THREAD.get() == Some(&std::thread::current().id());
+        let main = std::thread::current().name() == Some("main") || android_game;
         if std::thread::current().name() == Some(INTEGRATED_SERVER_THREAD) {
             // `MinecraftServer.runServer` saves its own `-server.txt` report before
             // `onServerCrash` hands it to the client, which then only prints its path.
@@ -793,6 +798,10 @@ pub fn install(home: PathBuf, side: &'static str) {
             SERVER_CRASHED.store(true, std::sync::atomic::Ordering::Release);
         } else if main {
             deliver(&home, panic_report(info, side));
+            if android_game {
+                emergency_save();
+                std::process::exit(101);
+            }
         } else if is_worker_thread(std::thread::current().name()) {
             deliver(&home, worker_panic_report(info, side));
             emergency_save();
@@ -806,6 +815,14 @@ pub fn install(home: PathBuf, side: &'static str) {
             );
         }
     }));
+}
+
+/// The thread a platform runs the game on when it is not the process's main one (Android's
+/// activity thread): a panic there is the game's crash and ends the process.
+static GAME_THREAD: std::sync::OnceLock<std::thread::ThreadId> = std::sync::OnceLock::new();
+
+pub fn set_game_thread(id: std::thread::ThreadId) {
+    let _ = GAME_THREAD.set(id);
 }
 
 /// Vanilla's debug crash (`key.debug.crash` held for ten seconds): the error `main` gets back,

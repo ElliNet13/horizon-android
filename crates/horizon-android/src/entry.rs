@@ -38,6 +38,8 @@ pub fn run(app: AndroidApp) {
     );
     // The JNI helpers (`storage`, `clipboard`) need the activity from the start.
     let _ = APP.set(app.clone());
+    // The game runs on this thread: a panic here ends the process (with a crash report).
+    horizon_client::crash::set_game_thread(std::thread::current().id());
     std::panic::set_hook(Box::new(|info| log::error!("panic: {info}")));
     // Which build this is, and the thread stack it asked for (the first lines of a crash log).
     log::info!(

@@ -202,6 +202,14 @@ impl Game<'_> {
     }
     /// `KeyboardHandler.tick`: the debug crash countdown.
     pub(super) fn tick_debug_keys(&mut self) -> Result<()> {
+        if crate::entry::take_crash_request() {
+            // Asked for by a platform's debug page: the same end as the debug key's.
+            let crash = horizon_client::crash::DebugCrash::new();
+            if let Err(e) = self.save_game() {
+                log::error!("the emergency save before the crash failed: {e}");
+            }
+            return Err(crash.into());
+        }
         let now = self.debug_millis();
         match self.debug_keys.tick(now) {
             None => {}
