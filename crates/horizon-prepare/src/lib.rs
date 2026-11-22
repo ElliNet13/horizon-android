@@ -198,6 +198,8 @@ pub(crate) fn hold_lock(dir: &Path, log: Log) -> Result<PreparationLock, String>
             ));
             file.lock().map_err(error)?;
         }
+        // No locks on this file system (Android's shared storage): go without.
+        Err(fs::TryLockError::Error(e)) if e.kind() == std::io::ErrorKind::Unsupported => {}
         Err(fs::TryLockError::Error(e)) => return Err(error(e)),
     }
     Ok(PreparationLock(file))

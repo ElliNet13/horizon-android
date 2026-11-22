@@ -84,7 +84,10 @@ fn lock_shared_from(root: &Path, mut opened: Option<fs::File>) -> Option<fs::Fil
         match file {
             Ok(file) => {
                 // Blocks only while a prune holds it exclusively.
-                if let Err(e) = file.lock_shared() {
+                // (No locks on this file system, as Android's shared storage: go without.)
+                if let Err(e) = file.lock_shared()
+                    && e.kind() != std::io::ErrorKind::Unsupported
+                {
                     failed(e);
                     return None;
                 }
@@ -139,6 +142,10 @@ fn lock_exclusive(root: &Path) -> std::io::Result<Exclusive> {
         // Another prune may have unlinked it first: then the name is not this file's.
         Ok(()) if is_current(&file, &lock) => Ok(Exclusive::Free(file)),
         Ok(()) | Err(fs::TryLockError::WouldBlock) => Ok(Exclusive::Held),
+        // No locks on this file system: no other game can be told apart, so this one prunes.
+        Err(fs::TryLockError::Error(e)) if e.kind() == std::io::ErrorKind::Unsupported => {
+            Ok(Exclusive::Free(file))
+        }
         Err(fs::TryLockError::Error(e)) => Err(e),
     }
 }

@@ -40,10 +40,15 @@ impl Drop for Locked {
 }
 
 pub fn locked(file: File, mode: LockMode) -> Result<Locked, std::fs::TryLockError> {
-    match mode {
+    let result = match mode {
         LockMode::Shared => file.try_lock_shared(),
         LockMode::Exclusive => file.try_lock(),
-    }?;
+    };
+    match result {
+        // No locks on this file system (Android's shared storage): nothing to hold.
+        Err(std::fs::TryLockError::Error(e)) if e.kind() == std::io::ErrorKind::Unsupported => {}
+        other => other?,
+    }
     Ok(Locked {
         file,
         release: Release::Unlock,

@@ -115,12 +115,18 @@ fn acquire(home: &Path, blocking: bool) -> io::Result<Option<HomeLockGuard>> {
         .create(true)
         .truncate(false)
         .open(guard.path.join(".mod-browser.lock"))?;
+    // A file system with no locks (Android's shared storage: "not implemented") cannot hold
+    // one: go on without, as the threads of this process still take turns above.
     if blocking {
-        file.lock()?;
+        match file.lock() {
+            Err(e) if e.kind() == io::ErrorKind::Unsupported => {}
+            other => other?,
+        }
     } else {
         match file.try_lock() {
             Ok(()) => {}
             Err(fs::TryLockError::WouldBlock) => return Ok(None),
+            Err(fs::TryLockError::Error(e)) if e.kind() == io::ErrorKind::Unsupported => {}
             Err(fs::TryLockError::Error(e)) => return Err(e),
         }
     }
