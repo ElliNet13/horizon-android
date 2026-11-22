@@ -248,8 +248,8 @@ impl Loading {
         let gui = [point[0] / scale, point[1] / scale];
         let device_id = winit::event::DeviceId::dummy();
         let at = winit::dpi::PhysicalPosition::new(f64::from(point[0]), f64::from(point[1]));
-        let mut send = |this: &mut Self, event: WindowEvent| this.menu_event(event_loop, event);
-        let mut mouse = |this: &mut Self, phase: Option<TouchPhase>| -> Result<()> {
+        let send = |this: &mut Self, event: WindowEvent| this.menu_event(event_loop, event);
+        let mouse = |this: &mut Self, phase: Option<TouchPhase>| -> Result<()> {
             send(
                 this,
                 WindowEvent::CursorMoved {
