@@ -173,10 +173,11 @@ fn report_hook(game_dir: &Path, report: &horizon_client::crash::Report) {
         .join("crash-reports")
         .join(horizon_client::crash::file_name(&report.time, report.side));
     let error = report.error.lines().next().unwrap_or_default();
-    let _ = std::fs::write(
+    let written = std::fs::write(
         dir.join(CRASHED),
         format!("report\n{}\n{error}\n", file.display()),
     );
+    log::info!("watchdog: crash marker written: {written:?}");
 }
 
 /// The last run's crash, once (the marker goes with it).
