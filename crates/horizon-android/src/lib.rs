@@ -9,9 +9,11 @@ pub mod account;
 pub mod download;
 pub mod envfile;
 pub mod flow;
+pub mod debug_page;
 pub mod launcher_page;
 pub mod mojang;
 pub mod msa;
+pub mod watchdog;
 pub mod provision;
 
 #[cfg(target_os = "android")]

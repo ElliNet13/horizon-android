@@ -594,3 +594,37 @@ pub fn set_keyboard_height_hook(hook: KeyboardHeightHook) {
 pub(crate) fn keyboard_height() -> u32 {
     KEYBOARD_HEIGHT_HOOK.get().map_or(0, |hook| hook())
 }
+
+/// A crash the last run ended with, for the screen the next start opens with.
+pub struct CrashNotice {
+    /// What went wrong, in a line or two.
+    pub summary: String,
+    /// The crash report's file.
+    pub report: Option<std::path::PathBuf>,
+}
+
+/// Takes the last run's crash (and forgets it), when it ended in one.
+pub type CrashNoticeHook = fn() -> Option<CrashNotice>;
+
+static CRASH_NOTICE_HOOK: std::sync::OnceLock<CrashNoticeHook> = std::sync::OnceLock::new();
+
+pub fn set_crash_notice_hook(hook: CrashNoticeHook) {
+    let _ = CRASH_NOTICE_HOOK.set(hook);
+}
+
+pub(crate) fn crash_notice() -> Option<CrashNotice> {
+    CRASH_NOTICE_HOOK.get().and_then(|hook| hook())
+}
+
+/// Starts the game again in a new process; true when it was asked to.
+pub type RestartHook = fn() -> bool;
+
+static RESTART_HOOK: std::sync::OnceLock<RestartHook> = std::sync::OnceLock::new();
+
+pub fn set_restart_hook(hook: RestartHook) {
+    let _ = RESTART_HOOK.set(hook);
+}
+
+pub(crate) fn restart_hook() -> Option<RestartHook> {
+    RESTART_HOOK.get().copied()
+}

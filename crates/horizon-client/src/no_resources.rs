@@ -25,6 +25,8 @@ pub enum Action {
     Prepare,
     /// Copy the failure message to the clipboard, through the platform's hook.
     CopyError,
+    /// Start the game again in a new process (the crash screen), through the platform's hook.
+    Restart,
     Quit,
 }
 
@@ -83,6 +85,34 @@ impl NoResources {
             status_room: false,
             copyable: None,
         }
+    }
+
+    /// The screen the start after a crash opens with: what happened, where the report is, and
+    /// Restart when the platform can (`entry::set_restart_hook`).
+    pub fn crashed(summary: &str, report: Option<&std::path::Path>, can_restart: bool) -> Self {
+        let mut paragraphs = vec![lang::get("horizon.crash.about"), summary.to_owned()];
+        let mut copy = summary.to_owned();
+        if let Some(report) = report {
+            paragraphs.push(lang::tr("horizon.crash.report", &[&report.display()]));
+            copy = format!("{summary}\n{}", report.display());
+        }
+        let mut buttons = Vec::new();
+        if can_restart {
+            buttons.push((lang::get("horizon.crash.restart"), Action::Restart));
+        }
+        buttons.push((lang::get("horizon.no_resources.quit"), Action::Quit));
+        let mut screen = Self {
+            title: lang::get("horizon.crash.title"),
+            paragraphs,
+            buttons,
+            looked_in: String::new(),
+            status: None,
+            progress: None,
+            status_room: false,
+            copyable: None,
+        };
+        screen.set_copyable(Some(copy));
+        screen
     }
 
     /// Adds the Import button and says where the zip goes (`zip` is shown to the player).
@@ -276,8 +306,8 @@ impl NoResources {
                 (Action::Open(_) | Action::ImportZip | Action::Prepare, true) => {
                     (color::with_alpha(color::accent(), 0.85), color::on_accent())
                 }
-                (Action::Quit | Action::CopyError, false) => (color::raised(), color::text()),
-                (Action::Quit | Action::CopyError, true) => (color::hover(), color::text()),
+                (Action::Quit | Action::CopyError | Action::Restart, false) => (color::raised(), color::text()),
+                (Action::Quit | Action::CopyError | Action::Restart, true) => (color::hover(), color::text()),
             };
             let h = control();
             ui.rounded(button.x, button.y, button.w, h, h / 2.0, plate);

@@ -71,6 +71,10 @@ pub fn run(app: AndroidApp) {
         }
     }
 
+    // The watchdog starts the game again after a crash (and the crash screen opens first).
+    if let Some(private) = app.external_data_path() {
+        crate::watchdog::start(&private);
+    }
     if let Some(dir) = &game_dir {
         crate::account::init(dir);
         crate::launcher_page::set_shared(crate::storage::shared_in_use(dir));
@@ -94,6 +98,16 @@ pub fn run(app: AndroidApp) {
         log::warn!("launcher page not registered: {e:?}");
     }
 
+    // The debug app has a page of its own for testing (crashing on purpose).
+    if app
+        .external_data_path()
+        .is_some_and(|p| p.to_string_lossy().contains(".debug"))
+        && let Err(e) = horizon_hooks::lang::register(crate::debug_page::LANG)
+            .and(horizon_hooks::pages::register(&crate::debug_page::PAGE))
+    {
+        log::warn!("debug page not registered: {e:?}");
+    }
+
     let _ = APP.set(app);
     if let Some(app) = APP.get() {
         crate::immersive::keep(app);
@@ -115,4 +129,7 @@ pub fn run(app: AndroidApp) {
     // "Open folder" buttons open the documents app, as there is no file manager to start.
     horizon_client::desktop::set_open_path_hook(crate::clipboard::open_folder);
     horizon_game::main();
+    // Back here, the game ended by itself: what the system does while the process winds down
+    // is not a crash.
+    crate::watchdog::clean_exit();
 }

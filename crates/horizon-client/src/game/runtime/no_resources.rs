@@ -47,6 +47,23 @@ struct Missing {
 
 /// Shows the screen until the player closes it.
 pub(super) fn show(looked_in: &std::path::Path, settings: &Settings) -> Result<()> {
+    show_with(looked_in, settings, None)
+}
+
+/// The screen of the start after a crash: what happened, with a button to start again.
+pub(super) fn show_crash(
+    looked_in: &std::path::Path,
+    settings: &Settings,
+    notice: crate::entry::CrashNotice,
+) -> Result<()> {
+    show_with(looked_in, settings, Some(notice))
+}
+
+fn show_with(
+    looked_in: &std::path::Path,
+    settings: &Settings,
+    crash: Option<crate::entry::CrashNotice>,
+) -> Result<()> {
     // The player's language, from the strings compiled in: there are no prepared ones.
     horizon_client::lang::set(horizon_client::lang::Language::load(
         &[],
@@ -73,14 +90,22 @@ pub(super) fn show(looked_in: &std::path::Path, settings: &Settings) -> Result<(
         suspended: false,
         copied: false,
     };
-    if crate::entry::prepare_hook().is_some() {
-        app.screen.offer_prepare();
-    }
-    if let Some((folder, shown)) = crate::entry::files_folder() {
-        app.screen.offer_folder(&folder, shown);
-    }
-    if import_offered() {
-        app.screen.offer_import(std::path::Path::new(IMPORT_ZIP));
+    if let Some(notice) = &crash {
+        app.screen = NoResources::crashed(
+            &notice.summary,
+            notice.report.as_deref(),
+            crate::entry::restart_hook().is_some(),
+        );
+    } else {
+        if crate::entry::prepare_hook().is_some() {
+            app.screen.offer_prepare();
+        }
+        if let Some((folder, shown)) = crate::entry::files_folder() {
+            app.screen.offer_folder(&folder, shown);
+        }
+        if import_offered() {
+            app.screen.offer_import(std::path::Path::new(IMPORT_ZIP));
+        }
     }
 
     crate::entry::new_event_loop()?.run_app(&mut app)?;
@@ -142,6 +167,12 @@ impl Missing {
         match self.with_ui(&mut batch, |ui| self.screen.click(ui)) {
             Some(Action::Open(address)) => packs::open_uri(address),
             Some(Action::Quit) => event_loop.exit(),
+            Some(Action::Restart) => {
+                // A new process starts the game; this one is done.
+                if crate::entry::restart_hook().is_some_and(|restart| restart()) {
+                    event_loop.exit();
+                }
+            }
             Some(Action::ImportZip) => self.start_import(),
             Some(Action::Prepare) => self.start_prepare(),
             Some(Action::CopyError) => {
