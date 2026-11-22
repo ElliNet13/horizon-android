@@ -281,6 +281,15 @@ impl Game<'_> {
     /// winit's `about_to_wait`: what happens between frames (stop requests, the closing
     /// save, world entry, the control socket, pads), then the next frame.
     pub(super) fn idle(&mut self, event_loop: &dyn EventLoopCtl) {
+        // A platform's debug page asked for a crash (from any screen, a tick or not).
+        if crate::entry::take_crash_request() {
+            if let Err(e) = self.save_game() {
+                log::error!("the emergency save before the crash failed: {e}");
+            }
+            self.error = Some(horizon_client::crash::DebugCrash::new().into());
+            event_loop.exit();
+            return;
+        }
         // A splitscreen player's game has nothing to save: P1's shuts the process down.
         let client_quit = self.client_quit.get();
         if !self.options.split_guest
