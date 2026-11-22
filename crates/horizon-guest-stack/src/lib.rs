@@ -320,7 +320,7 @@ const REQUIRED: usize = GUEST_STACK_BYTES + HOST_HEADROOM;
 
 /// A refusal naming what was measured. Leaked once per refusing thread: `check_current` keeps it
 /// for the thread's life.
-#[cfg(any(target_os = "linux", target_vendor = "apple", windows))]
+#[cfg(any(target_os = "linux", target_os = "android", target_vendor = "apple", windows))]
 fn refuse(why: String) -> Result<(), &'static str> {
     Err(Box::leak(
         format!("GuestStackUnavailable: {why}").into_boxed_str(),
@@ -328,12 +328,12 @@ fn refuse(why: String) -> Result<(), &'static str> {
 }
 
 /// A refusal where nothing could be measured: the reason, and the requirement.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn unmeasured(why: &str) -> Result<(), &'static str> {
     refuse(format!("{why}; needs {} KiB", REQUIRED / 1024))
 }
 
-#[cfg(any(target_os = "linux", target_vendor = "apple", windows))]
+#[cfg(any(target_os = "linux", target_os = "android", target_vendor = "apple", windows))]
 fn too_small(size: usize, measured_by: &str) -> Result<(), &'static str> {
     refuse(format!(
         "the calling thread has {} KiB of stack, needs {} KiB ({measured_by})",
@@ -470,7 +470,7 @@ fn inspect_current() -> Result<(), &'static str> {
 
 /// Whether the caller is the main thread (its thread id is the process id); `None` when the
 /// thread-id query failed (a negative result, as under a seccomp filter that refuses it).
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn is_main_thread(tid: libc::c_long, pid: libc::c_long) -> Option<bool> {
     (tid >= 0).then_some(tid == pid)
 }
@@ -480,7 +480,7 @@ fn is_main_thread(tid: libc::c_long, pid: libc::c_long) -> Option<bool> {
 /// the mapping below it from `/proc/self/maps`, and where the arguments and environment end (the
 /// initial stack pointer, `startstack`) from `/proc/self/stat`. The answer doesn't depend on how
 /// deep the caller is, so `check_current` may cache it. Returns the room and what bounds it.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn main_thread_room() -> Result<(usize, String), String> {
     let mut limit = libc::rlimit {
         rlim_cur: 0,
@@ -531,7 +531,7 @@ fn main_thread_room() -> Result<(usize, String), String> {
 
 /// `startstack`, field 28 of `/proc/self/stat`. The fields after the command name, which ends at
 /// the last ')', start at field 3.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn start_stack(stat: &[u8]) -> Option<usize> {
     let after_name = &stat[stat.iter().rposition(|&byte| byte == b')')? + 1..];
     std::str::from_utf8(after_name)
@@ -546,7 +546,7 @@ fn start_stack(stat: &[u8]) -> Option<usize> {
 /// its own end), so `below <= address < end`; `None` also when a row before it is malformed or out
 /// of order. The path field must be exactly the pseudo-name: a file may be called
 /// `/opt/horizon-[stack]`. Mapped file names need not be UTF-8, so the rows are read as bytes.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn stack_row(maps: &[u8], address: usize) -> Option<(usize, usize)> {
     let mut below = 0;
     for line in maps
@@ -571,7 +571,7 @@ fn stack_row(maps: &[u8], address: usize) -> Option<(usize, usize)> {
     None
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 #[derive(Debug, PartialEq)]
 enum StackBound {
     /// `RLIMIT_STACK`: mm/mmap.c `acct_stack_growth` counts the whole stack, top to lowest address.
@@ -583,7 +583,7 @@ enum StackBound {
 /// Room left below `used_from` on a stack whose top is `top`. The kernel lets the stack grow to
 /// `soft_limit` bytes in all, the pages above `used_from` included, and never to within
 /// `guard_gap` of the mapping that ends at `below`. The gap bounds only the mapping, not the limit.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn main_stack_room(
     soft_limit: usize,
     below: usize,
