@@ -284,6 +284,8 @@ pub struct UiState {
     pub chat_draft_shown: bool,
     /// When the chat screen opened (its input took the focus: the cursor blink).
     pub chat_opened: Option<std::time::Instant>,
+    /// GUI pixels the chat box is lifted above the on-screen keyboard (0 without one).
+    pub chat_lift: f32,
     /// The chat screen is `InBedChatScreen`: the sleeper's, with a Leave Bed button.
     pub in_bed_chat: bool,
     pub registries: Registries,
@@ -1410,7 +1412,7 @@ impl Game<'_> {
         }
     }
     pub(super) fn chat_scroll(&mut self, amount: f32) {
-        let cursor = self.cursor;
+        let cursor = (self.cursor.0, self.cursor.1 + self.ui.chat_lift);
         let mouse = (cursor.0.floor() as i32, cursor.1.floor() as i32);
         if let Some(screen) = self.ui.chat_screen.as_mut()
             && screen.scroll(mouse, amount as f64)
@@ -1423,7 +1425,7 @@ impl Game<'_> {
         self.ui.chat.scroll_by(amount as i32, true);
     }
     pub(super) fn chat_click(&mut self) {
-        let cursor = self.cursor;
+        let cursor = (self.cursor.0, self.cursor.1 + self.ui.chat_lift);
         let height = self.renderer.as_ref().map_or(720.0, |r| {
             HudBatch::new(
                 [r.config.width, r.config.height],
@@ -1745,8 +1747,22 @@ impl Game<'_> {
         }
         Some(horizon_protocol::crypto::uuid_string(bits))
     }
+    /// Moves what was drawn from vertex `start` on up by `lift` GUI pixels.
+    fn lift_drawn(batch: &mut HudBatch, start: usize, lift: f32) {
+        if lift > 0.0 {
+            for vertex in batch.vertices.iter_mut().skip(start) {
+                vertex.pos[1] -= lift;
+            }
+        }
+    }
     pub(super) fn draw_chat_screen(&mut self, batch: &mut HudBatch) {
         self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Background);
+        // The on-screen keyboard covers the bottom of the window: the chat and its box are drawn
+        // that much higher, and the pointer reaches them there (`chat_lift`).
+        let keyboard = horizon_client::entry::keyboard_height() as f32 / batch.scale.max(0.01);
+        let lift = keyboard.min(batch.height * 0.6);
+        self.ui.chat_lift = lift;
+        let lifted_from = batch.vertices.len();
         self.gui_layer("minecraft:chat", batch, |g, batch| g.draw_chat(batch));
         let Some(mut screen) = self.ui.chat_screen.take() else {
             self.draw_screen_phase(batch, horizon_client::screen_draw::RenderPhase::Foreground);
@@ -1771,7 +1787,10 @@ impl Game<'_> {
         } else {
             self.settings.text_background(0.0) as i32
         };
-        let mouse = (self.cursor.0.floor() as i32, self.cursor.1.floor() as i32);
+        let mouse = (
+            self.cursor.0.floor() as i32,
+            (self.cursor.1 + lift).floor() as i32,
+        );
         let blink = self
             .ui
             .chat_opened
@@ -1779,6 +1798,7 @@ impl Game<'_> {
         let draws = screen.draw(&m, mouse, blink, background);
         self.ui.chat_screen = Some(screen);
         let tooltip = horizon_client::screen_draw::paint(batch, &self.gui.atlas, &draws);
+        Self::lift_drawn(batch, lifted_from, lift);
         if in_bed {
             let (w, h) = (batch.width, batch.height);
             let rect = self
@@ -1792,13 +1812,15 @@ impl Game<'_> {
         // The hovered message part's tooltip (`renderComponentHoverEffect`),
         // or the text of the message tag under the cursor.
         let height = batch.height as i32;
-        let (cx, cy) = (f64::from(self.cursor.0), f64::from(self.cursor.1));
+        let (cx, cy) = (f64::from(self.cursor.0), f64::from(self.cursor.1 + lift));
         // handleTagIcon: the chat-modified icons over the cursor or its message.
         let (tag_tooltip, tag_icons) =
             self.ui
                 .chat
                 .focused_tags(&self.gui.atlas.font, height, cx, cy);
+        let icons_from = batch.vertices.len();
         horizon_client::hud_layout::paint(batch, &self.gui.atlas, &tag_icons);
+        Self::lift_drawn(batch, icons_from, lift);
         let style = self
             .ui
             .chat

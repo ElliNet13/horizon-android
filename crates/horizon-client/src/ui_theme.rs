@@ -759,7 +759,13 @@ const BOOT_LOG: u32 = color::hex(0x9BA1A6, 255);
 /// The boot screen while the menu is not ready yet: the wordmark centred on
 /// pure black and the console's last lines at the bottom right, as the
 /// terminal prints them.
-pub fn draw_boot(atlas: &HudAtlas, batch: &mut HudBatch, logs: &[String]) {
+pub fn draw_boot(
+    atlas: &HudAtlas,
+    batch: &mut HudBatch,
+    logs: &[String],
+    task: Option<&str>,
+    fraction: f32,
+) {
     // Pure black under everything: the frame's panorama (the title artwork
     // once the bundle is in) must not leak through.
     batch.fill(
@@ -771,7 +777,22 @@ pub fn draw_boot(atlas: &HudAtlas, batch: &mut HudBatch, logs: &[String]) {
         color::hex(0x000000, 255),
     );
     wordmark(atlas, batch);
+    draw_boot_bar(atlas, batch, task, fraction);
     draw_boot_log(atlas, batch, logs);
+}
+
+/// The loading bar under the wordmark, with what the platform is doing above it (when it is).
+fn draw_boot_bar(atlas: &HudAtlas, batch: &mut HudBatch, task: Option<&str>, fraction: f32) {
+    let mut ui = Ui::new(atlas, batch, (0.0, 0.0));
+    let width = (ui.w * 0.5).clamp(120.0, 480.0);
+    let (x, y, h) = ((ui.w - width) / 2.0, ui.h * 0.62, 6.0);
+    if let Some(task) = task {
+        ui.text_centered(Face::Mono, micro(), ui.w / 2.0, y - micro() * 2.0, BOOT_LOG, task);
+    }
+    ui.finish();
+    let fraction = if fraction.is_finite() { fraction.clamp(0.0, 1.0) } else { 0.0 };
+    batch.fill(atlas, x, y, width, h, color::hex(0x2A2D30, 255));
+    batch.fill(atlas, x, y, width * fraction, h, BOOT_TEXT);
 }
 
 /// The wordmark with its tagline, centred.
@@ -917,7 +938,7 @@ mod tests {
         reset_atlas();
         let atlas = HudAtlas::boot();
         let mut batch = HudBatch::scratch([1280, 720]);
-        draw_boot(&atlas, &mut batch, &[]);
+        draw_boot(&atlas, &mut batch, &[], None, 0.5);
         // The first quad is the pure black backdrop over the frame's panorama.
         let (w, h) = (batch.width, batch.height);
         let bg = &batch.vertices[..6];

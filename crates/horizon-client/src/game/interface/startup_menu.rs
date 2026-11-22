@@ -418,6 +418,7 @@ pub(super) fn spawn_loader(
     let handle = horizon_guest_stack::builder()
         .name("resource-loader".into())
         .spawn(move || {
+            crate::entry::wait_boot_progress();
             let mut pack_error = None;
             let root =
                 packs::startup_root(&vanilla_root, &settings.resource_packs, &[], &mod_sources)
@@ -1357,7 +1358,11 @@ impl Loading {
         let Some(gui) = &self.gui else {
             // The pack's screens do not exist yet: the boot screen holds the
             // window, the wordmark and the console's lines while they load.
-            horizon_client::ui_theme::draw_boot(&self.boot, batch, &logs);
+            let (label, fraction) = match crate::entry::boot_progress() {
+                Some((label, fraction)) => (Some(label), fraction),
+                None => (None, self.progress.fraction()),
+            };
+            horizon_client::ui_theme::draw_boot(&self.boot, batch, &logs, label.as_deref(), fraction);
             return;
         };
         // `Gui.setScreen` clears the focus of the screen it leaves
@@ -1572,6 +1577,7 @@ mod tests {
             ui_at: None,
             title_drawn: false,
             menu: StartupMenu::default(),
+            touch: Default::default(),
             error: None,
         }
     }

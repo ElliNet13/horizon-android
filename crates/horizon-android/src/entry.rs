@@ -110,6 +110,8 @@ pub fn run(app: AndroidApp) {
         let shared = crate::storage::shared_in_use(&dir);
         Some((dir, shared))
     });
+    // The chat box sits above the on-screen keyboard.
+    horizon_client::entry::set_keyboard_height_hook(crate::keyboard::height);
     // "Open folder" buttons open the documents app, as there is no file manager to start.
     horizon_client::desktop::set_open_path_hook(crate::clipboard::open_folder);
     horizon_game::main();

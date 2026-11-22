@@ -552,3 +552,45 @@ mod installation_tests {
         assert!(super::installation_refusals(&[]).is_empty());
     }
 }
+
+/// What a platform does before the game's files can be read (Android: moving the game folder to
+/// Documents), shown as a bar on the loading screen. The loader waits for it to finish.
+static BOOT_TASK: std::sync::Mutex<Option<(String, f32)>> = std::sync::Mutex::new(None);
+
+/// A platform's start-up task is running: `label` says what, `fraction` (0 to 1) how far.
+pub fn set_boot_progress(label: &str, fraction: f32) {
+    if let Ok(mut task) = BOOT_TASK.lock() {
+        *task = Some((label.to_owned(), fraction.clamp(0.0, 1.0)));
+    }
+}
+
+/// The start-up task is over.
+pub fn end_boot_progress() {
+    if let Ok(mut task) = BOOT_TASK.lock() {
+        *task = None;
+    }
+}
+
+pub(crate) fn boot_progress() -> Option<(String, f32)> {
+    BOOT_TASK.lock().ok().and_then(|task| task.clone())
+}
+
+/// Blocks until no start-up task runs (the loader calls it before it reads the game's files).
+pub(crate) fn wait_boot_progress() {
+    while boot_progress().is_some() {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+/// How tall the on-screen keyboard is now, in pixels (Android; 0 when hidden).
+pub type KeyboardHeightHook = fn() -> u32;
+
+static KEYBOARD_HEIGHT_HOOK: std::sync::OnceLock<KeyboardHeightHook> = std::sync::OnceLock::new();
+
+pub fn set_keyboard_height_hook(hook: KeyboardHeightHook) {
+    let _ = KEYBOARD_HEIGHT_HOOK.set(hook);
+}
+
+pub(crate) fn keyboard_height() -> u32 {
+    KEYBOARD_HEIGHT_HOOK.get().map_or(0, |hook| hook())
+}

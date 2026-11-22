@@ -76,6 +76,8 @@ pub(super) struct Loading {
     pub(super) ui_at: Option<Instant>,
     pub(super) title_drawn: bool,
     pub(super) menu: startup_menu::StartupMenu,
+    /// Fingers on the menus shown while the game loads (`touch_menu`).
+    pub(super) touch: crate::touch_ui::TouchUi,
     pub(super) error: Option<Box<dyn std::error::Error>>,
 }
 /// How long the handoff waits for the first title frame before building the
@@ -212,11 +214,89 @@ impl Loading {
         if self.window.as_ref().is_none_or(|w| w.id() != id) {
             return;
         }
+        if let WindowEvent::Touch(touch) = &event
+            && crate::game::touch_input::touch_enabled()
+        {
+            if let Err(error) = self.touch_menu(event_loop, touch) {
+                self.error = Some(error);
+                event_loop.exit();
+            }
+            return;
+        }
         follow_keymap(&mut event);
         if let Err(error) = self.menu_event(event_loop, event) {
             self.error = Some(error);
             event_loop.exit();
         }
+    }
+    /// A finger on the title or options while the game loads: a tap clicks, a drag scrolls and
+    /// one on a slider holds the pointer, as the in-game screens treat it (`touch_input`), so the
+    /// menus answer from the first frame instead of after the handoff.
+    fn touch_menu(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        touch: &winit::event::Touch,
+    ) -> Result<()> {
+        use crate::touch_ui::Gesture;
+        use winit::event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase};
+        let Some(size) = self.renderer.as_ref().map(|r| [r.config.width, r.config.height])
+        else {
+            return Ok(());
+        };
+        let scale = HudBatch::new(size, self.settings.gui_scale_inputs()).scale;
+        let point = [touch.location.x as f32, touch.location.y as f32];
+        let gui = [point[0] / scale, point[1] / scale];
+        let device_id = winit::event::DeviceId::dummy();
+        let at = winit::dpi::PhysicalPosition::new(f64::from(point[0]), f64::from(point[1]));
+        let mut send = |this: &mut Self, event: WindowEvent| this.menu_event(event_loop, event);
+        let mut mouse = |this: &mut Self, phase: Option<TouchPhase>| -> Result<()> {
+            send(
+                this,
+                WindowEvent::CursorMoved {
+                    device_id,
+                    position: at,
+                },
+            )?;
+            let state = match phase {
+                Some(TouchPhase::Started) => ElementState::Pressed,
+                Some(TouchPhase::Ended | TouchPhase::Cancelled) => ElementState::Released,
+                _ => return Ok(()),
+            };
+            send(
+                this,
+                WindowEvent::MouseInput {
+                    device_id,
+                    state,
+                    button: MouseButton::Left,
+                },
+            )
+        };
+        if self.touch.direct_pointer(touch.id, gui, touch.phase) {
+            mouse(self, Some(touch.phase))?;
+        } else {
+            match self.touch.gesture(touch.id, point, touch.phase) {
+                Gesture::Tap => {
+                    mouse(self, Some(TouchPhase::Started))?;
+                    mouse(self, Some(TouchPhase::Ended))?;
+                }
+                Gesture::Scroll(lines) => {
+                    mouse(self, None)?;
+                    send(
+                        self,
+                        WindowEvent::MouseWheel {
+                            device_id,
+                            delta: MouseScrollDelta::LineDelta(0.0, -lines),
+                            phase: TouchPhase::Moved,
+                        },
+                    )?;
+                }
+                Gesture::None => {}
+            }
+        }
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
+        Ok(())
     }
     /// The menu bundle arrived: rebuild the loading screen with the real atlas
     /// and title panorama.

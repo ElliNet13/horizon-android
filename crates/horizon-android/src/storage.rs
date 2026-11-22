@@ -30,14 +30,56 @@ pub fn game_dir(private: &Path) -> PathBuf {
         log::warn!("game folder {}: {e}", shared.display());
         return private.to_owned();
     }
-    move_in(private, &shared);
+    // On a worker: the loading screen shows its bar, and the loader waits for it (`entry`).
+    if std::fs::read_dir(private).is_ok_and(|mut d| d.next().is_some()) {
+        horizon_client::entry::set_boot_progress("Moving game files", 0.0);
+        let (from, to) = (private.to_owned(), shared.clone());
+        let spawned = std::thread::Builder::new()
+            .name("move-game-files".into())
+            .spawn(move || {
+                let tally = Tally {
+                    total: files_in(&from).max(1),
+                    done: std::cell::Cell::new(0),
+                };
+                move_in(&from, &to, &tally);
+                horizon_client::entry::end_boot_progress();
+            });
+        if let Err(e) = spawned {
+            log::warn!("could not start the move: {e}");
+            horizon_client::entry::end_boot_progress();
+        }
+    }
     shared
+}
+
+/// How far a move is: files moved of the files to move.
+struct Tally {
+    total: u64,
+    done: std::cell::Cell<u64>,
+}
+
+impl Tally {
+    fn add(&self, files: u64) {
+        self.done.set(self.done.get() + files);
+        horizon_client::entry::set_boot_progress(
+            "Moving game files",
+            self.done.get() as f32 / self.total as f32,
+        );
+    }
+}
+
+/// The files under `path` (one for a file).
+fn files_in(path: &Path) -> u64 {
+    match std::fs::read_dir(path) {
+        Ok(entries) => entries.flatten().map(|e| files_in(&e.path())).sum(),
+        Err(_) => 1,
+    }
 }
 
 /// Moves what an earlier start kept in `from` into `to`, folder by folder: what `to` lacks moves,
 /// a folder both have is merged, a file both have stays as it is in `to`. A move inside the same
 /// storage is a rename, so it is quick and leaves nothing half-copied.
-fn move_in(from: &Path, to: &Path) {
+fn move_in(from: &Path, to: &Path, tally: &Tally) {
     let Ok(entries) = std::fs::read_dir(from) else {
         return;
     };
@@ -47,18 +89,25 @@ fn move_in(from: &Path, to: &Path) {
         if target.exists() {
             if source.is_dir() && target.is_dir() {
                 log::info!("merging {} into {}", source.display(), target.display());
-                move_in(&source, &target);
+                move_in(&source, &target, tally);
                 let _ = std::fs::remove_dir(&source);
+            } else {
+                // Stays where it is: counted as done.
+                tally.add(files_in(&source));
             }
             continue;
         }
+        let files = files_in(&source);
         match std::fs::rename(&source, &target) {
-            Ok(()) => log::info!("moved {}", source.display()),
+            Ok(()) => {
+                log::info!("moved {}", source.display());
+                tally.add(files);
+            }
             Err(e) => {
                 // A rename between the private folder and Documents can be refused: copy, then
                 // delete what was copied (a failed copy leaves the original where it was).
                 log::warn!("rename {}: {e}; copying instead", source.display());
-                match copy_all(&source, &target) {
+                match copy_all(&source, &target, tally) {
                     Ok(()) => {
                         let _ = if source.is_dir() {
                             std::fs::remove_dir_all(&source)
@@ -77,16 +126,18 @@ fn move_in(from: &Path, to: &Path) {
 }
 
 /// Copies a file or a whole folder (links followed).
-fn copy_all(from: &Path, to: &Path) -> std::io::Result<()> {
+fn copy_all(from: &Path, to: &Path, tally: &Tally) -> std::io::Result<()> {
     if from.is_dir() {
         std::fs::create_dir_all(to)?;
         for entry in std::fs::read_dir(from)? {
             let entry = entry?;
-            copy_all(&entry.path(), &to.join(entry.file_name()))?;
+            copy_all(&entry.path(), &to.join(entry.file_name()), tally)?;
         }
         Ok(())
     } else {
-        std::fs::copy(from, to).map(|_| ())
+        std::fs::copy(from, to)?;
+        tally.add(1);
+        Ok(())
     }
 }
 

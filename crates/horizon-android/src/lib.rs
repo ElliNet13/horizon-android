@@ -23,6 +23,8 @@ pub use entry::run;
 #[cfg(target_os = "android")]
 mod immersive;
 #[cfg(target_os = "android")]
+mod keyboard;
+#[cfg(target_os = "android")]
 mod on_device;
 #[cfg(target_os = "android")]
 pub mod preload;
