@@ -2,7 +2,5 @@
   "horizon.android.debug": "Debug",
   "horizon.android.debug.crash": "Crashes",
   "horizon.android.debug.crash_error": "Crash the game (error)",
-  "horizon.android.debug.crash_native": "Crash the game (signal)",
-  "horizon.android.debug.watchdog": "Watchdog",
-  "horizon.android.debug.kill_watchdog": "Kill the watchdog"
+  "horizon.android.debug.crash_panic": "Crash the game (panic)"
 }

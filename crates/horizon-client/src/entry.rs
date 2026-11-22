@@ -629,6 +629,29 @@ pub(crate) fn restart_hook() -> Option<RestartHook> {
     RESTART_HOOK.get().copied()
 }
 
+/// How much memory the device has: what is free (the system's estimate of what apps can still
+/// use) and the total, in megabytes.
+#[derive(Clone, Copy, Debug)]
+pub struct MemoryInfo {
+    pub available_mb: u64,
+    pub total_mb: u64,
+}
+
+/// Reads the device's memory, `None` when it can't be read.
+pub type MemoryHook = fn() -> Option<MemoryInfo>;
+
+static MEMORY_HOOK: std::sync::OnceLock<MemoryHook> = std::sync::OnceLock::new();
+
+/// Registers how to read the device's memory; with it the game warns while playing when memory
+/// runs low (a phone ends apps that use too much).
+pub fn set_memory_hook(hook: MemoryHook) {
+    let _ = MEMORY_HOOK.set(hook);
+}
+
+pub(crate) fn memory_info() -> Option<MemoryInfo> {
+    MEMORY_HOOK.get().and_then(|hook| hook())
+}
+
 static CRASH_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Asks the game to stop with an error at its next tick, as a bug would (a debug page's button):

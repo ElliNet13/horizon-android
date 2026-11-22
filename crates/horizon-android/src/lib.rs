@@ -13,7 +13,8 @@ pub mod debug_page;
 pub mod launcher_page;
 pub mod mojang;
 pub mod msa;
-pub mod watchdog;
+pub mod crash_screen;
+pub mod memory;
 pub mod provision;
 
 #[cfg(target_os = "android")]

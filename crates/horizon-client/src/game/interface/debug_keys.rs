@@ -617,7 +617,7 @@ impl Game<'_> {
     fn debug_feedback(&mut self, message: Text) {
         self.debug_decorated(YELLOW, message);
     }
-    fn debug_warning(&mut self, message: Text) {
+    pub(super) fn debug_warning(&mut self, message: Text) {
         self.debug_decorated(RED, message);
     }
     fn debug_translated(&mut self, key: &str) {

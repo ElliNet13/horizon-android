@@ -81,10 +81,11 @@ pub fn run(app: AndroidApp) {
         }
     }
 
-    // The watchdog starts the game again after a crash (and the crash screen opens first).
+    // After a crash the game starts again on the crash screen.
     if let Some(private) = app.external_data_path() {
-        crate::watchdog::start(&private);
+        crate::crash_screen::start(&private);
     }
+    horizon_client::entry::set_memory_hook(crate::memory::info);
     if let Some(dir) = &game_dir {
         crate::account::init(dir);
         crate::launcher_page::set_shared(crate::storage::shared_in_use(dir));
@@ -139,13 +140,10 @@ pub fn run(app: AndroidApp) {
     // "Open folder" buttons open the documents app, as there is no file manager to start.
     horizon_client::desktop::set_open_path_hook(crate::clipboard::open_folder);
     horizon_game::main();
-    // Back here, the game ended by itself: what the system does while the process winds down
-    // is not a crash.
-    crate::watchdog::clean_exit();
+    // Back here, the game ended by itself.
     // The process ends with the game: the engine cannot run twice in one, and a process left alive
     // is reused by the system for the next start, which then fails. `_exit` skips the
-    // destructors that abort while other threads still run. The watchdog starts the game again
-    // when this was a crash.
+    // destructors that abort while other threads still run.
     log::info!("horizon: the game ended; ending the process");
     // SAFETY: ends the process at once, as intended.
     unsafe { libc::_exit(0) };

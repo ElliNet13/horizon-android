@@ -1,6 +1,5 @@
 //! Options > Horizon Settings > Debug: things for testing the app that are only in the debug build
-//! (`horizon-android-debug`): crashing the game on purpose, to try the watchdog and the crash
-//! screen.
+//! (`horizon-android-debug`): crashing the game on purpose, to try the crash screen.
 use horizon_hooks::pages::{Act, Page, Place, Row};
 
 /// The page's text.
@@ -13,8 +12,7 @@ pub struct Debug;
 enum Item {
     Display,
     CrashError,
-    CrashNative,
-    KillWatchdog,
+    CrashPanic,
 }
 
 fn layout() -> Vec<(Row, Item)> {
@@ -26,27 +24,18 @@ fn layout() -> Vec<(Row, Item)> {
         ),
         (
             Row::text(
-                "Stops the game with an error, as a bug would: it saves a crash report, and the watchdog starts the game again with the crash screen.",
+                "Stops the game with an error, as a bug would: it saves a crash report, and the game starts again on the crash screen.",
             )
             .quiet(),
             Item::Display,
         ),
         (
-            Row::button("horizon.android.debug.crash_native"),
-            Item::CrashNative,
+            Row::button("horizon.android.debug.crash_panic"),
+            Item::CrashPanic,
         ),
         (
-            Row::text("Kills the process with a signal, as a crash in the graphics driver would: no crash report.")
+            Row::text("Panics on the game's thread, as a bug in the game's code would: the same crash report and restart.")
                 .quiet(),
-            Item::Display,
-        ),
-        (Row::Heading("horizon.android.debug.watchdog"), Item::Display),
-        (
-            Row::button("horizon.android.debug.kill_watchdog"),
-            Item::KillWatchdog,
-        ),
-        (
-            Row::text("Stops the watchdog process, to see the game start it again.").quiet(),
             Item::Display,
         ),
     ]
@@ -72,8 +61,7 @@ impl Page for Debug {
         match (item, act) {
             // An error the game stops with, as a bug's: the crash report is saved and the game ends.
             (Item::CrashError, Act::Press) => horizon_client::entry::request_crash(),
-            (Item::CrashNative, Act::Press) => crate::watchdog::crash_natively(),
-            (Item::KillWatchdog, Act::Press) => crate::watchdog::kill_watchdog(),
+            (Item::CrashPanic, Act::Press) => crate::crash_screen::panic_now(),
             _ => {}
         }
     }
