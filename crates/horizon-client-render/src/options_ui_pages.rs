@@ -171,7 +171,17 @@ impl OptionsUi {
             .iter()
             .enumerate()
             .filter(|(_, page)| page.place() == added::Place::HorizonSettings)
-            .map(|(i, page)| button(0.0, 0.0, 150.0, tr(page.title()), Act::Push(Page::Added(i))));
+            // Like the engine's own entries, a button that opens a page ends in "...".
+            .map(|(i, page)| {
+                let title = format!("{}...", lang::get(page.title()));
+                button(0.0, 0.0, 150.0, Text::literal(title), Act::Push(Page::Added(i)))
+            });
+        // The first fills the empty place a row before it left (the mod browser's).
+        if let Some(Row::Buttons(_, second @ None)) = rows.last_mut()
+            && let Some(first) = entries.next()
+        {
+            *second = Some(first);
+        }
         while let Some(first) = entries.next() {
             rows.push(Row::Buttons(first, entries.next()));
         }
