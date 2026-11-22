@@ -31,7 +31,8 @@ pub fn game_dir(private: &Path) -> PathBuf {
         return private.to_owned();
     }
     // On a worker: the loading screen shows its bar, and the loader waits for it (`entry`).
-    if std::fs::read_dir(private).is_ok_and(|mut d| d.next().is_some()) {
+    let marker = shared.join(MOVED_MARKER);
+    if !marker.exists() && std::fs::read_dir(private).is_ok_and(|mut d| d.next().is_some()) {
         horizon_client::entry::set_boot_progress("Moving game files", 0.0);
         let (from, to) = (private.to_owned(), shared.clone());
         let spawned = std::thread::Builder::new()
@@ -40,9 +41,14 @@ pub fn game_dir(private: &Path) -> PathBuf {
                 let tally = Tally {
                     total: files_in(&from).max(1),
                     done: std::cell::Cell::new(0),
+                    failed: std::cell::Cell::new(false),
                 };
                 move_in(&from, &to, &tally);
                 drop_empty_json(&to.join(".local"));
+                // Done and nothing left behind: later starts skip the walk over the old folder.
+                if !tally.failed.get() {
+                    let _ = std::fs::write(&marker, "moved from the app's private folder\n");
+                }
                 horizon_client::entry::end_boot_progress();
             });
         if let Err(e) = spawned {
@@ -53,10 +59,15 @@ pub fn game_dir(private: &Path) -> PathBuf {
     shared
 }
 
+/// Written in the game folder once everything has moved out of the private one.
+const MOVED_MARKER: &str = ".horizon-moved";
+
 /// How far a move is: files moved of the files to move.
 struct Tally {
     total: u64,
     done: std::cell::Cell<u64>,
+    /// Something could not be moved: the next start tries again.
+    failed: std::cell::Cell<bool>,
 }
 
 impl Tally {
@@ -125,6 +136,7 @@ fn move_in(from: &Path, to: &Path, tally: &Tally) {
                     }
                     Err(e) => {
                         log::warn!("could not move {}: {e}", source.display());
+                        tally.failed.set(true);
                         let _ = std::fs::remove_dir_all(&target);
                     }
                 }
