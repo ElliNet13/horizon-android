@@ -1360,7 +1360,7 @@ impl Loading {
             // window, the wordmark and the console's lines while they load.
             let (label, fraction) = match crate::entry::boot_progress() {
                 Some((label, fraction)) => (Some(label), fraction),
-                None => (None, self.progress.fraction()),
+                None => (Some(self.progress.line().to_owned()), self.progress.fraction()),
             };
             horizon_client::ui_theme::draw_boot(&self.boot, batch, &logs, label.as_deref(), fraction);
             return;

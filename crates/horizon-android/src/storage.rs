@@ -42,6 +42,7 @@ pub fn game_dir(private: &Path) -> PathBuf {
                     done: std::cell::Cell::new(0),
                 };
                 move_in(&from, &to, &tally);
+                drop_empty_json(&to.join(".local"));
                 horizon_client::entry::end_boot_progress();
             });
         if let Err(e) = spawned {
@@ -91,6 +92,13 @@ fn move_in(from: &Path, to: &Path, tally: &Tally) {
                 log::info!("merging {} into {}", source.display(), target.display());
                 move_in(&source, &target, tally);
                 let _ = std::fs::remove_dir(&source);
+            } else if source.is_file() && target.is_file() && cut_short(&source, &target) {
+                // An interrupted copy left the start of this file: the whole one replaces it.
+                log::info!("replacing the partial {}", target.display());
+                if std::fs::copy(&source, &target).is_ok() {
+                    let _ = std::fs::remove_file(&source);
+                }
+                tally.add(1);
             } else {
                 // Stays where it is: counted as done.
                 tally.add(files_in(&source));
@@ -122,6 +130,35 @@ fn move_in(from: &Path, to: &Path, tally: &Tally) {
                 }
             }
         }
+    }
+}
+
+/// Removes empty `.json` files under `dir`: no prepared file is empty, and one left by an
+/// interrupted copy makes the game stop with "EOF while parsing a value" (the prepared-files check
+/// then asks for the files again).
+fn drop_empty_json(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            drop_empty_json(&path);
+        } else if path.extension().is_some_and(|e| e == "json")
+            && std::fs::metadata(&path).is_ok_and(|m| m.len() == 0)
+        {
+            log::warn!("removing the empty {}", path.display());
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
+/// `target` is shorter than `source`: a copy that stopped part way (or an empty file), since
+/// the same file moved here earlier.
+fn cut_short(source: &Path, target: &Path) -> bool {
+    match (std::fs::metadata(source), std::fs::metadata(target)) {
+        (Ok(s), Ok(t)) => t.len() < s.len(),
+        _ => false,
     }
 }
 

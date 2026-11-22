@@ -776,27 +776,36 @@ pub fn draw_boot(
         batch.height,
         color::hex(0x000000, 255),
     );
-    wordmark(atlas, batch);
-    draw_boot_bar(atlas, batch, task, fraction);
+    let below = wordmark(atlas, batch);
+    draw_boot_bar(atlas, batch, below, task, fraction);
     draw_boot_log(atlas, batch, logs);
 }
 
 /// The loading bar under the wordmark, with what the platform is doing above it (when it is).
-fn draw_boot_bar(atlas: &HudAtlas, batch: &mut HudBatch, task: Option<&str>, fraction: f32) {
-    let mut ui = Ui::new(atlas, batch, (0.0, 0.0));
-    let width = (ui.w * 0.5).clamp(120.0, 480.0);
-    let (x, y, h) = ((ui.w - width) / 2.0, ui.h * 0.62, 6.0);
-    if let Some(task) = task {
-        ui.text_centered(Face::Mono, micro(), ui.w / 2.0, y - micro() * 2.0, BOOT_LOG, task);
-    }
-    ui.finish();
+fn draw_boot_bar(
+    atlas: &HudAtlas,
+    batch: &mut HudBatch,
+    below: f32,
+    task: Option<&str>,
+    fraction: f32,
+) {
     let fraction = if fraction.is_finite() { fraction.clamp(0.0, 1.0) } else { 0.0 };
+    let width = (batch.width * 0.5).clamp(120.0, 480.0);
+    let (x, y, h) = ((batch.width - width) / 2.0, below + 14.0, 6.0);
     batch.fill(atlas, x, y, width, h, color::hex(0x2A2D30, 255));
     batch.fill(atlas, x, y, width * fraction, h, BOOT_TEXT);
+    // What is being done, under the bar, with how far along it is.
+    let mut ui = Ui::new(atlas, batch, (0.0, 0.0));
+    let line = match task {
+        Some(task) => format!("{task}  {}%", (fraction * 100.0).round() as u32),
+        None => format!("{}%", (fraction * 100.0).round() as u32),
+    };
+    ui.text_centered(Face::Mono, micro(), ui.w / 2.0, y + h + 8.0, BOOT_LOG, &line);
+    ui.finish();
 }
 
 /// The wordmark with its tagline, centred.
-fn wordmark(atlas: &HudAtlas, batch: &mut HudBatch) {
+fn wordmark(atlas: &HudAtlas, batch: &mut HudBatch) -> f32 {
     let mut ui = Ui::new(atlas, batch, (0.0, 0.0));
     let size = (ui.w / 16.0).clamp(display(), 96.0);
     let small = (size * 0.25).clamp(micro(), 18.0);
@@ -812,6 +821,8 @@ fn wordmark(atlas: &HudAtlas, batch: &mut HudBatch) {
         "Rust based minecraft client",
     );
     ui.finish();
+    // Where the tagline ends: the bar goes under it.
+    top + size * 1.45 + small * 0.6 + small * 1.6
 }
 
 /// The console's last lines at the bottom left, over any loading screen: long
