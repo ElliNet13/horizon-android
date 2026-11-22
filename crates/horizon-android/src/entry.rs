@@ -17,6 +17,14 @@ impl horizon_hooks::Hooks for Servers {
 
 /// Starts the game on the activity: what `android_main` does.
 pub fn run(app: AndroidApp) {
+    // The engine runs once per process (its hooks and engine state are set for good). After a
+    // crash the system can leave the process alive and start the activity in it again: end it, so
+    // the next start gets a new one.
+    static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        // SAFETY: ends the process at once, as intended.
+        unsafe { libc::_exit(1) };
+    }
     android_logger::init_once(
         android_logger::Config::default()
             .with_max_level(log::LevelFilter::Info)
@@ -132,4 +140,11 @@ pub fn run(app: AndroidApp) {
     // Back here, the game ended by itself: what the system does while the process winds down
     // is not a crash.
     crate::watchdog::clean_exit();
+    // The process ends with the game: the engine cannot run twice in one, and a process left alive
+    // is reused by the system for the next start, which then fails. `_exit` skips the
+    // destructors that abort while other threads still run. The watchdog starts the game again
+    // when this was a crash.
+    log::info!("horizon: the game ended; ending the process");
+    // SAFETY: ends the process at once, as intended.
+    unsafe { libc::_exit(0) };
 }
