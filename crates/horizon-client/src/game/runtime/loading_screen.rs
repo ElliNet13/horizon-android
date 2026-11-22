@@ -566,6 +566,13 @@ pub(super) fn damaged_prepared(root: &std::path::Path) -> Option<String> {
     if serde_json::from_slice::<serde_json::Value>(&bytes).is_err() {
         return Some("horizon-resources.json is not valid JSON".into());
     }
+    // Files the world data cannot load without: a copy or a move that stopped part way leaves
+    // the manifest but not these.
+    for name in ["facts.json", "block-tags.json"] {
+        if !root.join(name).is_file() {
+            return Some(format!("{name} is missing"));
+        }
+    }
     for entry in std::fs::read_dir(root).ok()?.flatten() {
         let path = entry.path();
         if path.extension() != Some(std::ffi::OsStr::new("json")) {

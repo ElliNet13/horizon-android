@@ -25,6 +25,12 @@ fn a_folder_without_prepared_files_is_named_before_loading() {
     );
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(root.join("horizon-resources.json"), "{}").unwrap();
+    // A copy that stopped part way leaves the manifest without the world data.
+    let partial = missing_resources(&root, None).expect("missing world data is reported");
+    assert!(partial.contains("block-tags.json is missing"), "{partial}");
+    for name in ["facts.json", "block-tags.json"] {
+        std::fs::write(root.join(name), "{}").unwrap();
+    }
     assert_eq!(missing_resources(&root, None), None);
 
     // A killed export leaves an empty file behind; the error names it

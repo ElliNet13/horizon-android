@@ -34,32 +34,42 @@ pub fn game_dir(private: &Path) -> PathBuf {
     shared
 }
 
-/// Moves what an earlier start kept in `from` into `to`, when `to` has none of it yet. A move
-/// inside the same storage is a rename, so it is quick and leaves nothing half-copied.
+/// Moves what an earlier start kept in `from` into `to`, folder by folder: what `to` lacks moves,
+/// a folder both have is merged, a file both have stays as it is in `to`. A move inside the same
+/// storage is a rename, so it is quick and leaves nothing half-copied.
 fn move_in(from: &Path, to: &Path) {
     let Ok(entries) = std::fs::read_dir(from) else {
         return;
     };
     for entry in entries.flatten() {
+        let source = entry.path();
         let target = to.join(entry.file_name());
         if target.exists() {
+            if source.is_dir() && target.is_dir() {
+                log::info!("merging {} into {}", source.display(), target.display());
+                move_in(&source, &target);
+                let _ = std::fs::remove_dir(&source);
+            }
             continue;
         }
-        if let Err(e) = std::fs::rename(entry.path(), &target) {
-            // A rename between the private folder and Documents can be refused: copy, then
-            // delete what was copied (a failed copy leaves the original where it was).
-            log::warn!("rename {}: {e}; copying instead", entry.path().display());
-            match copy_all(&entry.path(), &target) {
-                Ok(()) => {
-                    let _ = if entry.path().is_dir() {
-                        std::fs::remove_dir_all(entry.path())
-                    } else {
-                        std::fs::remove_file(entry.path())
-                    };
-                }
-                Err(e) => {
-                    log::warn!("could not move {}: {e}", entry.path().display());
-                    let _ = std::fs::remove_dir_all(&target);
+        match std::fs::rename(&source, &target) {
+            Ok(()) => log::info!("moved {}", source.display()),
+            Err(e) => {
+                // A rename between the private folder and Documents can be refused: copy, then
+                // delete what was copied (a failed copy leaves the original where it was).
+                log::warn!("rename {}: {e}; copying instead", source.display());
+                match copy_all(&source, &target) {
+                    Ok(()) => {
+                        let _ = if source.is_dir() {
+                            std::fs::remove_dir_all(&source)
+                        } else {
+                            std::fs::remove_file(&source)
+                        };
+                    }
+                    Err(e) => {
+                        log::warn!("could not move {}: {e}", source.display());
+                        let _ = std::fs::remove_dir_all(&target);
+                    }
                 }
             }
         }
