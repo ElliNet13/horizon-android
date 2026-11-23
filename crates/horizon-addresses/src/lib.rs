@@ -10,6 +10,10 @@
 /// port.
 pub const OFFICIAL_SERVER: &str = "play.playhorizon.dev";
 
+/// ElliNet13's server, which the Android build offers in the server list in place of the
+/// official one.
+pub const ELLINET13_SERVER: &str = "play.ellinet13.com";
+
 /// The official server's earlier addresses: the game and the launcher move a server list's
 /// entries for them to [`OFFICIAL_SERVER`], once. A move appends the old address here (and to
 /// `official_server_previous` in `launcher/links.json`).

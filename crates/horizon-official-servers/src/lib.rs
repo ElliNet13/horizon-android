@@ -100,6 +100,46 @@ pub fn add_official_server(game_dir: &Path) -> std::io::Result<()> {
     std::fs::write(marker, format!("{address}\n"))
 }
 
+/// The name of ElliNet13's server in the list.
+const ELLINET13_NAME: &str = "ElliNet13";
+/// Beside servers.dat once ElliNet13's server was offered: the address offered.
+const ELLINET13_MARKER: &str = "horizon_ellinet13_server.txt";
+
+/// The Android build's list: ElliNet13's server at the top, once (not again after the player
+/// deletes it), and the official server's entry out, once, where the game gave it (an entry the
+/// player renamed keeps its place). A failure is only logged.
+pub fn update_ellinet13(game_dir: &Path) {
+    if let Err(e) = add_ellinet13_server(game_dir) {
+        log::warn!("could not add ElliNet13's server to servers.dat: {e}");
+    }
+    if let Err(e) = withdraw_partner_servers(game_dir) {
+        log::warn!("could not take the withdrawn partner server out of servers.dat: {e}");
+    }
+}
+
+fn add_ellinet13_server(game_dir: &Path) -> std::io::Result<()> {
+    let address = horizon_addresses::ELLINET13_SERVER;
+    let marker = game_dir.join(ELLINET13_MARKER);
+    if std::fs::read_to_string(&marker)
+        .is_ok_and(|a| address_key(a.trim_end_matches(['\r', '\n'])) == address_key(address))
+    {
+        return Ok(());
+    }
+    let file = game_dir.join("servers.dat");
+    let _guard = servers::lock();
+    let (official_name, official_address) = OFFICIAL_SERVER;
+    servers::remove_where(&file, |n, ip| {
+        n == official_name && address_key(ip) == address_key(official_address)
+    })?;
+    if !servers::load(&file)
+        .iter()
+        .any(|s| address_key(&s.ip) == address_key(address))
+    {
+        servers::prepend(&file, &ServerEntry::new(ELLINET13_NAME, address))?;
+    }
+    std::fs::write(marker, format!("{address}\n"))
+}
+
 /// Afri-Network, which the game added once below the official server (#9299) until the
 /// partnership ended: the name and address the game gave its entry.
 const WITHDRAWN_PARTNER: (&str, &str) = (
