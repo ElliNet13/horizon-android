@@ -62,6 +62,11 @@ pub fn run(app: AndroidApp) {
         unsafe {
             std::env::set_var("HORIZON_HOME", &dir);
             std::env::set_var("HORIZON_NO_AUDIO", "1");
+            // WebAssembly mods need the game's wasm standard library, `horizon-wasm-std.wasm`,
+            // in the game folder (there is no program folder to put it beside).
+            if std::env::var_os("HORIZON_WASM_STD").is_none() {
+                std::env::set_var("HORIZON_WASM_STD", dir.join("horizon-wasm-std.wasm"));
+            }
         }
         log::info!("game folder {}", dir.display());
         // Settings for trying things without a rebuild: `horizon-env.txt` in the game folder,
@@ -85,6 +90,8 @@ pub fn run(app: AndroidApp) {
     if let Some(private) = app.external_data_path() {
         crate::crash_screen::start(&private);
     }
+    // No launcher here: the mod browser installs WebAssembly mods itself.
+    horizon_client::entry::allow_wasm_mods_in_game();
     horizon_client::entry::set_memory_hook(crate::memory::info);
     if let Some(dir) = &game_dir {
         crate::account::init(dir);

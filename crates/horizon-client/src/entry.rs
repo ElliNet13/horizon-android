@@ -652,6 +652,8 @@ pub(crate) fn memory_info() -> Option<MemoryInfo> {
     MEMORY_HOOK.get().and_then(|hook| hook())
 }
 
+pub use crate::mod_registry::allow_wasm_mods_in_game;
+
 static CRASH_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Asks the game to stop with an error at its next tick, as a bug would (a debug page's button):

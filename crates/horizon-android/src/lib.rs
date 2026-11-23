@@ -13,12 +13,13 @@ pub mod debug_page;
 pub mod launcher_page;
 pub mod mojang;
 pub mod msa;
-pub mod crash_screen;
 pub mod memory;
 pub mod provision;
 
 #[cfg(target_os = "android")]
 mod clipboard;
+#[cfg(target_os = "android")]
+mod crash_screen;
 #[cfg(target_os = "android")]
 mod entry;
 #[cfg(target_os = "android")]

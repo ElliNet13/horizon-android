@@ -595,9 +595,16 @@ pub fn load_installed(
             ..Loaded::default()
         },
         Ok(_) => {
-            let std = std::env::current_exe()
-                .ok()
-                .and_then(|exe| std::fs::read(exe.with_file_name("horizon-wasm-std.wasm")).ok());
+            // `HORIZON_WASM_STD` names the file where the game's own folder has no room for it
+            // (Android's program is the system's); else it sits beside the program.
+            let std = std::env::var_os("HORIZON_WASM_STD")
+                .filter(|path| !path.is_empty())
+                .and_then(|path| std::fs::read(path).ok())
+                .or_else(|| {
+                    std::env::current_exe().ok().and_then(|exe| {
+                        std::fs::read(exe.with_file_name("horizon-wasm-std.wasm")).ok()
+                    })
+                });
             load_available_std(
                 std.as_deref(),
                 packages,

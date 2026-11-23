@@ -147,8 +147,10 @@ impl ModuleCache {
         engine: &Engine,
         bytes: &[u8],
     ) -> wasmtime::Result<(Module, Source)> {
+        // Android has no program to start again for the compile (the process is the system's
+        // `app_process`), so the module compiles in this process there.
         #[cfg(unix)]
-        let child = if cfg!(test) {
+        let child = if cfg!(test) || cfg!(target_os = "android") {
             None
         } else {
             Some((

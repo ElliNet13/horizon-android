@@ -155,11 +155,6 @@ fn launch(env: &mut JNIEnv, activity: &JObject) -> jni::errors::Result<()> {
     Ok(())
 }
 
-/// Debug: stops the game with a panic on its thread, as a bug in the game's code would.
-pub fn panic_now() -> ! {
-    panic!("Debug: the panic button was pressed");
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

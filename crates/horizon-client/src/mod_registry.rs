@@ -96,15 +96,36 @@ fn fetch_text(at: &str) -> Result<String, String> {
     Ok(text)
 }
 
+static WASM_MODS_IN_APP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// This platform has no launcher: the in-game mod browser installs WebAssembly mods (sandboxed,
+/// no compiling) itself. Native mods still need a launcher's build.
+pub fn allow_wasm_mods_in_game() {
+    WASM_MODS_IN_APP.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn wasm_mods_in_game() -> bool {
+    WASM_MODS_IN_APP.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Code only a launcher installs: native mods, and wasm ones where the game installs those itself.
+fn is_launcher_code(manifest: &horizon_mod_package::Manifest) -> bool {
+    manifest.native.is_some()
+        || (manifest.wasm.is_some() && !wasm_mods_in_game())
+}
+
 /// The version of content mod `p` this game installs: the newest for this
 /// Minecraft version that wasn't taken down and has no code.
 pub fn installable<'a>(index: &Index, p: &'a Project) -> Option<&'a Version> {
     if p.kind != Kind::Mod {
         return None;
     }
-    index
-        .installable(p, GAME)
-        .filter(|v| v.capabilities.known() == [horizon_mod_package::Capability::Registries])
+    index.installable(p, GAME).filter(|v| {
+        let known = v.capabilities.known();
+        known == [horizon_mod_package::Capability::Registries]
+            // A WebAssembly mod lists no content capability of its own.
+            || (known.is_empty() && wasm_mods_in_game())
+    })
 }
 
 /// The registry's projects the browser offers, most downloaded first: content
@@ -184,7 +205,7 @@ pub fn install(
     }
     if target.exists() && old_file.as_deref() == Some(relative.as_str()) {
         let package = horizon_mod_package::Package::read(&target)?;
-        if package.manifest.native.is_some() || package.manifest.wasm.is_some() {
+        if is_launcher_code(&package.manifest) {
             return Err("code mods are installed and updated in the launcher".into());
         }
     }
@@ -217,7 +238,7 @@ pub fn install(
     let checked = || -> Result<_, String> {
         let trust = index::check_file(index, p, v, &download)?;
         let package = horizon_mod_package::Package::read(&download)?;
-        if package.manifest.native.is_some() || package.manifest.wasm.is_some() {
+        if is_launcher_code(&package.manifest) {
             return Err("code mods are installed and updated in the launcher".into());
         }
         Ok(trust)

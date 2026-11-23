@@ -61,7 +61,7 @@ impl Page for Debug {
         match (item, act) {
             // An error the game stops with, as a bug's: the crash report is saved and the game ends.
             (Item::CrashError, Act::Press) => horizon_client::entry::request_crash(),
-            (Item::CrashPanic, Act::Press) => crate::crash_screen::panic_now(),
+            (Item::CrashPanic, Act::Press) => panic!("Debug: the panic button was pressed"),
             _ => {}
         }
     }
