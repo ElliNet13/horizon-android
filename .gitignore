@@ -47,3 +47,6 @@
 
 # Logs saved by tools/android_env.py.
 android-log-*.txt
+
+# Built on a PC for the Android app (cargo-horizon-mod wasm-std)
+/crates/horizon-android/assets/horizon-wasm-std.wasm
