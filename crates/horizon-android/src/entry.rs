@@ -64,6 +64,15 @@ pub fn run(app: AndroidApp) {
             std::env::set_var("HORIZON_NO_AUDIO", "1");
             // WebAssembly mods need the game's wasm standard library, `horizon-wasm-std.wasm`,
             // in the game folder (there is no program folder to put it beside).
+            // The app carries the file when it was built with one; a newer game overwrites it.
+            const WASM_STD: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/horizon-wasm-std.wasm"));
+            let kept = dir.join("horizon-wasm-std.wasm");
+            if !WASM_STD.is_empty() && std::fs::read(&kept).ok().as_deref() != Some(WASM_STD) {
+                match std::fs::write(&kept, WASM_STD) {
+                    Ok(()) => log::info!("wrote {}", kept.display()),
+                    Err(e) => log::warn!("could not write {}: {e}", kept.display()),
+                }
+            }
             if std::env::var_os("HORIZON_WASM_STD").is_none() {
                 std::env::set_var("HORIZON_WASM_STD", dir.join("horizon-wasm-std.wasm"));
             }

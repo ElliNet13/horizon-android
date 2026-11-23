@@ -27,4 +27,18 @@ fn main() {
         );
     }
     archive.finish().expect("finish the archive");
+    // The game's wasm standard library, built on a PC (`cargo run -p cargo-horizon-mod --
+    // wasm-std crates/horizon-android/assets/horizon-wasm-std.wasm`): packed into the app, which
+    // puts it in the game folder where the wasm mods look for it.
+    let std_source = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/horizon-wasm-std.wasm");
+    let std_out = Path::new(&std::env::var_os("OUT_DIR").expect("OUT_DIR")).join("horizon-wasm-std.wasm");
+    println!("cargo:rerun-if-changed={}", std_source.display());
+    if std_source.is_file() {
+        fs::copy(&std_source, &std_out).expect("copy the wasm std");
+    } else {
+        fs::write(&std_out, []).expect("write an empty wasm std");
+        println!(
+            "cargo:warning=assets/horizon-wasm-std.wasm is missing: wasm mods will not load until it is built and put in the game folder"
+        );
+    }
 }
