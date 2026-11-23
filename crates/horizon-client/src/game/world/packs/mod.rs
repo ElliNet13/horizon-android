@@ -24,6 +24,9 @@ use std::{
 
 /// Where overlay roots are built (beside options.txt).
 pub fn cache_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("HORIZON_CACHE_DIR").filter(|path| !path.is_empty()) {
+        return PathBuf::from(dir).join("resourcepacks");
+    }
     std::env::current_dir()
         .unwrap_or_default()
         .join(".horizon-cache/resourcepacks")

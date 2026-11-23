@@ -497,7 +497,13 @@ pub fn load_installed(
     let game_dir = &launch.context.game_dir;
     let dev = &launch.context.dev_mods;
     let budget = compile_budget::CompileBudget::read(launch, player_dir);
-    let mut cache = module_cache::ModuleCache::new(game_dir.join(module_cache::CACHE_DIR));
+    // `HORIZON_CACHE_DIR` is a folder the platform can trust (Android's shared storage is
+    // writable by every app, so the cache there would be refused and every start recompile).
+    let cache_root = std::env::var_os("HORIZON_CACHE_DIR")
+        .filter(|path| !path.is_empty())
+        .map(|dir| std::path::PathBuf::from(dir).join("wasm"))
+        .unwrap_or_else(|| game_dir.join(module_cache::CACHE_DIR));
+    let mut cache = module_cache::ModuleCache::new(cache_root);
     if let Ok(budget) = budget.as_ref() {
         cache.budget = *budget;
     }

@@ -95,6 +95,16 @@ pub fn run(app: AndroidApp) {
         }
     }
 
+    // The app's internal storage holds the caches that need links (the mod content overlays are
+    // symlinks, which shared storage refuses) and a folder only this app can write (the wasm
+    // module cache).
+    if let Some(internal) = app.internal_data_path() {
+        let cache = internal.join("cache");
+        if std::fs::create_dir_all(&cache).is_ok() {
+            // SAFETY: nothing else runs yet, so no other thread reads the environment.
+            unsafe { std::env::set_var("HORIZON_CACHE_DIR", &cache) };
+        }
+    }
     // After a crash the game starts again on the crash screen.
     if let Some(private) = app.external_data_path() {
         crate::crash_screen::start(&private);

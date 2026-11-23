@@ -885,7 +885,11 @@ pub(super) fn content_overlay(
         &overrides,
     )
     .map_err(|error| error.to_string())?;
-    let cache = here.join(".horizon-cache");
+    // `HORIZON_CACHE_DIR`: where the platform can link (Android's shared storage cannot).
+    let cache = std::env::var_os("HORIZON_CACHE_DIR")
+        .filter(|path| !path.is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| here.join(".horizon-cache"));
     // Content admission and the live code-dispatch boundary jointly determine
     // what loaded. Namespaces and raw startup metadata cannot answer this.
     let inventory = sources.enabled_inventory(|id| mods.iter().any(|loaded| loaded.id == id));
