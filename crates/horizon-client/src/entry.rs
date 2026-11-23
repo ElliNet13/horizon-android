@@ -306,7 +306,7 @@ pub fn start<G>(
             eprintln!("Press Enter to close.");
             let _ = std::io::stdin().read_line(&mut String::new());
         }
-        std::process::exit(if usage {
+        crash::end_process(if usage {
             game::exit_code::USAGE
         } else {
             game::exit_code::ERROR

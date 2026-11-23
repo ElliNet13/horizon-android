@@ -800,13 +800,13 @@ pub fn install(home: PathBuf, side: &'static str) {
             deliver(&home, panic_report(info, side));
             if android_game {
                 emergency_save();
-                std::process::exit(101);
+                end_process(101);
             }
         } else if is_worker_thread(std::thread::current().name()) {
             deliver(&home, worker_panic_report(info, side));
             emergency_save();
             // The crash ends the game, as the relayed report does on vanilla's main thread.
-            std::process::exit(101);
+            end_process(101);
         } else {
             log::error!(
                 "Caught previously unhandled exception in thread {}: {}",
@@ -815,6 +815,22 @@ pub fn install(home: PathBuf, side: &'static str) {
             );
         }
     }));
+}
+
+static EXIT: std::sync::OnceLock<fn(i32) -> !> = std::sync::OnceLock::new();
+
+/// How a crash ends the process, where `std::process::exit` is too slow: Android runs the
+/// graphics library's destructors there, which abort, and the system then spends seconds on the
+/// crash before it starts the game again.
+pub fn set_exit(exit: fn(i32) -> !) {
+    let _ = EXIT.set(exit);
+}
+
+pub fn end_process(code: i32) -> ! {
+    match EXIT.get() {
+        Some(exit) => exit(code),
+        None => std::process::exit(code),
+    }
 }
 
 /// The thread a platform runs the game on when it is not the process's main one (Android's

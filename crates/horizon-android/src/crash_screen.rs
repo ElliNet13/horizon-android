@@ -31,6 +31,10 @@ pub fn start(dir: &Path) {
     }
     let _ = DIR.set(dir);
     horizon_client::crash::on_report(report_hook);
+    horizon_client::crash::set_exit(|code| {
+        // SAFETY: ends the process at once, skipping the destructors that abort.
+        unsafe { libc::_exit(code) }
+    });
     horizon_client::entry::set_crash_notice_hook(take_notice);
     horizon_client::entry::set_restart_hook(restart);
 }
