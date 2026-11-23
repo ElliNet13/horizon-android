@@ -45,6 +45,7 @@
   },
   "allowed": [
     "crates/cargo-horizon-mod/src/registry.rs horizon-rust.github.io",
+    "crates/horizon-android/src/provision.rs packages.termux.dev",
     "crates/horizon-client-render/src/pack_browser.rs api.modrinth.com",
     "crates/horizon-client/src/mod_registry.rs horizon-rust.github.io",
     "crates/horizon-client/src/mod_registry.rs playhorizon.dev",
