@@ -93,6 +93,18 @@ impl Game<'_> {
         let started = phase == TouchPhase::Started;
         let ended = matches!(phase, TouchPhase::Ended | TouchPhase::Cancelled);
         let norm = [point[0] / w as f32, point[1] / h as f32];
+        if self.touch.controls.editor.is_some() {
+            // The layout editor takes every finger until Done or Cancel.
+            if let Some(exit) = self.touch.controls.edit_touch(id, norm, started, ended)
+                && matches!(exit, horizon_client_render::touch::EditorExit::Done)
+            {
+                let path = Self::game_dir().join(LAYOUT_FILE);
+                if let Err(e) = self.touch.controls.settings.save(&path) {
+                    log::warn!("could not save the touch layout {}: {e}", path.display());
+                }
+            }
+            return;
+        }
         let delta = self.touch.controls.update(id, norm, started, ended);
         if delta != [0.0; 2] {
             let [dx, dy] = horizon_client_render::touch::aim::camera_delta(
@@ -109,9 +121,12 @@ impl Game<'_> {
         let c = &mut self.touch.controls;
         let chat = std::mem::take(&mut c.chat_requested);
         let debug = std::mem::take(&mut c.debug_requested);
-        // Not wired yet: the layout editor and the perspective toggle.
-        c.settings_requested = false;
+        // The Touch button opens the layout editor. The perspective toggle is not wired yet.
+        let edit_layout = std::mem::take(&mut c.settings_requested);
         c.perspective_requested = false;
+        if edit_layout {
+            c.open_editor();
+        }
         if chat {
             self.open_chat_method("");
         }
