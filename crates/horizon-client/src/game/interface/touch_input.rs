@@ -118,6 +118,14 @@ impl Game<'_> {
                 f64::from(dy / DEGREES_PER_PIXEL),
             );
         }
+        // A custom button's keyboard key goes to the game as the window's keys go: the mods'
+        // key hooks and mappings hear it (a zoom key). A game action's token has no key here.
+        for (token, down) in self.touch.controls.key_events() {
+            if let Some(key) = horizon_client::keybinds::key_code(&token) {
+                let action = if down { "down" } else { "up" };
+                self.with_user_input(true, |game| game.socket_key_input(key, action));
+            }
+        }
         let c = &mut self.touch.controls;
         let chat = std::mem::take(&mut c.chat_requested);
         let debug = std::mem::take(&mut c.debug_requested);
